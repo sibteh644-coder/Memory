@@ -1,35 +1,22 @@
-import { SlashCommandBuilder, MessageFlags } from 'discord.js';
-import { createEmbed } from '../../utils/embeds.js';
-import { logger } from '../../utils/logger.js';
+const { EmbedBuilder } = require('discord.js');
 
-import { InteractionHelper } from '../../utils/interactionHelper.js';
-export default {
-    data: new SlashCommandBuilder()
-    .setName("av")
-    .setDescription("Display a user's avatar image")
-    .addUserOption((option) =>
-      option
-        .setName("target")
-        .setDescription(
-          "The user whose avatar you want to see (defaults to you)",
-        ),
-    ),
+module.exports = {
+    name: 'av',
+    description: 'Shows a user\'s avatar.',
 
-  async execute(interaction) {
-    const user = interaction.options.getUser("target") || interaction.user;
-    const avatarUrl = user.displayAvatarURL({ size: 2048, dynamic: true });
+    async execute(message, args) {
+        const user = message.mentions.users.first() || message.author;
 
-    const embed = createEmbed({ 
-      title: `${user.username}'s Avatar`, 
-      description: `[Download Link](${avatarUrl})` 
-    })
-      .setImage(avatarUrl);
+        const avatar = user.displayAvatarURL({
+            dynamic: true,
+            size: 1024
+        });
 
-    await InteractionHelper.safeReply(interaction, { embeds: [embed] });
-    logger.info(`Av command executed`, {
-      userId: interaction.user.id,
-      targetUserId: user.id,
-      guildId: interaction.guildId
-    });
-  }
+        const embed = new EmbedBuilder()
+            .setTitle(`${user.username}'s Avatar`)
+            .setImage(avatar)
+            .setColor('Blurple');
+
+        await message.reply({ embeds: [embed] });
+    }
 };
