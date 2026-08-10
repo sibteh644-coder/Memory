@@ -25,9 +25,13 @@ export default {
         try {
             const deleted = await interaction.channel.bulkDelete(amount, true);
 
-            await interaction.reply({
+            const reply = await interaction.reply({
                 content: `Deleted ${deleted.size} message${deleted.size === 1 ? '' : 's'} in ${interaction.channel}.`
             });
+
+            setTimeout(() => {
+                reply.delete().catch(() => {});
+            }, 2000);
 
         } catch (error) {
             console.error('Purge error:', error);
@@ -56,9 +60,13 @@ export default {
         try {
             const deleted = await interaction.channel.bulkDelete(amount, true);
 
-            await interaction.reply({
+            const reply = await interaction.reply({
                 content: `Deleted ${deleted.size} message${deleted.size === 1 ? '' : 's'} in ${interaction.channel}.`
             });
+
+            setTimeout(() => {
+                reply.delete().catch(() => {});
+            }, 2000);
 
         } catch (error) {
             console.error('Purge error:', error);
