@@ -1,28 +1,60 @@
-client.on("messageCreate", async (message) => {
-    if (message.author.bot) return;
+import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
 
-    if (!message.content.startsWith("?purge")) return;
+export default {
+    data: new SlashCommandBuilder()
+        .setName('purge')
+        .setDescription('Delete messages')
+        .addIntegerOption(option =>
+            option
+                .setName('amount')
+                .setDescription('Number of messages to delete (1-100)')
+                .setRequired(true)
+                .setMinValue(1)
+                .setMaxValue(100)
+        )
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
 
-    const args = message.content.trim().split(/\s+/);
-    const amount = parseInt(args[1]);
+    async execute(interaction) {
+        const amount = interaction.options.getInteger('amount');
 
-    if (!amount || amount < 1 || amount > 100) {
-        return message.reply("Please enter a number between 1 and 100.");
-    }
+        const deleted = await interaction.channel.bulkDelete(amount, true);
 
-    try {
-        await message.channel.bulkDelete(amount, true);
-
-        const confirmation = await message.channel.send(
-            `Purged ${amount} message${amount === 1 ? "" : "s"}.`
-        );
+        await interaction.reply({
+            content: `Purged ${deleted.size} message${deleted.size === 1 ? '' : 's'}.`
+        });
 
         setTimeout(() => {
-            confirmation.delete().catch(() => {});
+            interaction.deleteReply().catch(() => {});
         }, 3000);
+    },
 
-    } catch (error) {
-        console.error(error);
-        message.reply("I don't have permission to delete messages.");
+    async prefixExecute(interaction) {
+        const amount = interaction.options.getInteger('amount');
+
+        if (!Number.isInteger(amount) || amount < 1 || amount > 100) {
+            await interaction.reply({
+                content: 'Please enter a number between 1 and 100.'
+            });
+            return;
+        }
+
+        try {
+            const deleted = await interaction.channel.bulkDelete(amount, true);
+
+            await interaction.reply({
+                content: `Purged ${deleted.size} message${deleted.size === 1 ? '' : 's'}.`
+            });
+
+            setTimeout(() => {
+                interaction.deleteReply().catch(() => {});
+            }, 3000);
+
+        } catch (error) {
+            console.error('Purge error:', error);
+
+            await interaction.reply({
+                content: 'I cannot delete messages here. Make sure I have the **Manage Messages** permission.'
+            });
+        }
     }
-});
+};
