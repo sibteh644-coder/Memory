@@ -70,7 +70,9 @@ export async function loadCommands(client) {
             
             const commandModule = await import(`file://${filePath}`);
             const command = commandModule.default || commandModule;
-            
+            if (command.init) {
+    command.init(client);
+}
             if (!command.data || !command.execute) {
                 logger.warn(`Command at ${filePath} is missing required "data" or "execute" property.`);
                 continue;
