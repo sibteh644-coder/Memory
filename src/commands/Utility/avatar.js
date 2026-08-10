@@ -26,7 +26,7 @@ export default {
       .setImage(avatarUrl);
 
     await InteractionHelper.safeReply(interaction, { embeds: [embed] });
-    logger.info(`Avatar command executed`, {
+    logger.info(`Av command executed`, {
       userId: interaction.user.id,
       targetUserId: user.id,
       guildId: interaction.guildId
