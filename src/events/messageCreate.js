@@ -48,7 +48,13 @@ async function handlePrefixCommand(message, client) {
   try {
     const guildConfig = await getGuildConfig(client, message.guild.id);
     const prefix = guildConfig?.prefix || getCommandPrefix();
-    const parsed = parsePrefixCommand(message.content, prefix);
+
+let parsed = parsePrefixCommand(message.content, prefix);
+
+// Also allow ? as a prefix
+if (!parsed && prefix !== '?') {
+    parsed = parsePrefixCommand(message.content, '?');
+}
     
     if (!parsed) {
       return; 
