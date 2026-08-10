@@ -5,7 +5,7 @@ import { logger } from '../../utils/logger.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 export default {
     data: new SlashCommandBuilder()
-    .setName("avatar")
+    .setName("av")
     .setDescription("Display a user's avatar image")
     .addUserOption((option) =>
       option
