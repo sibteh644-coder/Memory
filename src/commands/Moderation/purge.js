@@ -58,10 +58,21 @@ export default {
         }
 
         try {
-            const deleted = await interaction.channel.bulkDelete(amount, true);
+            // Get the messages including the purge command itself.
+            // We request amount + 1 because the command message
+            // should not count toward the requested purge amount.
+            const messages = await interaction.channel.messages.fetch({
+                limit: Math.min(amount + 1, 100)
+            });
+
+            // Delete the requested messages + the ?purge command.
+            const deleted = await interaction.channel.bulkDelete(
+                messages,
+                true
+            );
 
             const reply = await interaction.reply({
-                content: `Deleted ${deleted.size} message${deleted.size === 1 ? '' : 's'} in ${interaction.channel}.`
+                content: `Deleted ${amount} message${amount === 1 ? '' : 's'} in ${interaction.channel}.`
             });
 
             setTimeout(() => {
