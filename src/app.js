@@ -47,7 +47,47 @@ class TitanBot extends Client {
     this.db = null;
     this.rest = new REST({ version: '10' }).setToken(config.bot.token);
   }
+this.on('messageCreate', async (message) => {
+  if (message.author.bot) return;
+  if (!message.guild) return;
+  if (!message.content.toLowerCase().startsWith('?purge')) return;
 
+  const args = message.content.trim().split(/\s+/);
+  const amount = Number(args[1]);
+
+  if (!Number.isInteger(amount) || amount < 1 || amount > 100) {
+    return message.reply('Please enter a number between 1 and 100.');
+  }
+
+  try {
+    // ?purge 1 deletes the command message itself
+    if (amount === 1) {
+      await message.delete();
+
+      const confirmation = await message.channel.send(
+        'Purged 1 message.'
+      );
+
+      setTimeout(() => confirmation.delete().catch(() => {}), 3000);
+      return;
+    }
+
+    // Delete the requested amount, including the ?purge command
+    await message.channel.bulkDelete(amount, true);
+
+    const confirmation = await message.channel.send(
+      `Purged ${amount} messages.`
+    );
+
+    setTimeout(() => confirmation.delete().catch(() => {}), 3000);
+  } catch (error) {
+    logger.error('Purge command error:', error);
+
+    await message.channel.send(
+      'I could not delete those messages. Make sure I have the **Manage Messages** permission.'
+    );
+  }
+});
   async start() {
     try {
       startupLog('Starting TitanBot...');
