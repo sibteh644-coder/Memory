@@ -1,4 +1,4 @@
-import { SlashCommandBuilder } from 'discord.js';
+import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
 
 export default {
     data: new SlashCommandBuilder()
@@ -13,12 +13,20 @@ export default {
                 .setMaxValue(100)
         ),
 
-    prefixExecute: async (interaction) => {
+    prefixOnly: true,
+
+    async prefixExecute(interaction) {
         const amount = interaction.options.getInteger('amount');
 
         if (!amount || amount < 1 || amount > 100) {
             return interaction.reply({
                 content: 'Please enter a number between 1 and 100.'
+            });
+        }
+
+        if (!interaction.member.permissions.has(PermissionFlagsBits.ManageMessages)) {
+            return interaction.reply({
+                content: 'You need the **Manage Messages** permission to use this command.'
             });
         }
 
@@ -37,7 +45,7 @@ export default {
             console.error('Purge error:', error);
 
             await interaction.reply({
-                content: 'I cannot delete messages here. Make sure I have Manage Messages permission.'
+                content: 'I could not delete those messages. Make sure I have **Manage Messages** permission.'
             });
         }
     }
