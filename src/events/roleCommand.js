@@ -10,53 +10,62 @@ export default {
         if (args[0].toLowerCase() !== '?role') return;
 
         if (!message.member.permissions.has('ManageRoles')) {
-            return message.reply('❌ You need the **Manage Roles** permission.');
+            return message.reply('You need the **Manage Roles** permission.');
         }
 
         const target = message.mentions.members.first();
 
         if (!target) {
-            return message.reply('❌ Usage: `?role @user Role Name`');
+            return message.reply('Usage: `?role @user Role Name`');
         }
 
-        // Remove the mention from the arguments
         args.shift();
-        const roleName = args
-            .slice(1)
-            .join(' ')
-            .trim();
+
+        // Remove the mention
+        args.shift();
+
+        const roleName = args.join(' ').trim();
 
         if (!roleName) {
-            return message.reply('❌ Please provide a role name.');
+            return message.reply('Please provide a role name.');
         }
 
+        // Makes "2 high", "2-high", "2 - high", etc. match "2 - high"
+        const normalizeRoleName = (name) => {
+            return name
+                .toLowerCase()
+                .replace(/[^a-z0-9]/g, '');
+        };
+
+        const normalizedInput = normalizeRoleName(roleName);
+
         const role = message.guild.roles.cache.find(
-            role => role.name.toLowerCase() === roleName.toLowerCase()
+            role => normalizeRoleName(role.name) === normalizedInput
         );
 
         if (!role) {
-            return message.reply(`❌ I couldn't find the role **${roleName}**.`);
+            return message.reply(`I couldn't find the role **${roleName}**.`);
         }
 
         if (role.managed) {
-            return message.reply('❌ That role cannot be manually assigned.');
+            return message.reply('That role cannot be manually assigned.');
         }
 
         const botMember = message.guild.members.me;
 
         if (!botMember) {
-            return message.reply('❌ I could not find my bot member.');
+            return message.reply('I could not find my bot member.');
         }
 
         if (role.position >= botMember.roles.highest.position) {
             return message.reply(
-                '❌ I cannot give that role because it is higher than or equal to my highest role.'
+                'I cannot give that role because it is higher than or equal to my highest role.'
             );
         }
 
         if (target.roles.cache.has(role.id)) {
             return message.reply(
-                `❌ **${target.user.username}** already has the **${role.name}** role.`
+                `**${target.user.username}** already has the **${role.name}** role.`
             );
         }
 
@@ -64,11 +73,11 @@ export default {
             await target.roles.add(role);
 
             return message.reply(
-                `✅ Added **${role.name}** to **${target.user.username}**.`
+                `Added **${role.name}** to **${target.user.username}**.`
             );
         } catch (error) {
             console.error('Role command error:', error);
-            return message.reply('❌ I could not give that role.');
+            return message.reply('I could not give that role.');
         }
     }
 };
