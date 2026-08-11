@@ -28,19 +28,47 @@ function parseDuration(duration) {
 function formatDuration(ms) {
     const seconds = Math.floor(ms / 1000);
 
-    if (seconds < 60) return `${seconds} second${seconds === 1 ? '' : 's'}`;
+    if (seconds < 60) {
+        return `${seconds} second${seconds === 1 ? '' : 's'}`;
+    }
 
     const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+
+    if (minutes < 60) {
+        return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+    }
 
     const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'}`;
+
+    if (hours < 24) {
+        return `${hours} hour${hours === 1 ? '' : 's'}`;
+    }
 
     const days = Math.floor(hours / 24);
-    if (days < 7) return `${days} day${days === 1 ? '' : 's'}`;
+
+    if (days < 7) {
+        return `${days} day${days === 1 ? '' : 's'}`;
+    }
 
     const weeks = Math.floor(days / 7);
+
     return `${weeks} week${weeks === 1 ? '' : 's'}`;
+}
+
+function createBanEmbed(user, durationMs, reason, moderator) {
+    const permanent = !durationMs;
+
+    return new EmbedBuilder()
+        .setTitle('🔨 Member Banned')
+        .setDescription(
+            `**User:** <@${user.id}>\n` +
+            `**Duration:** ${permanent ? 'Permanent' : formatDuration(durationMs)}\n` +
+            `**Reason:** ${reason}`
+        )
+        .setColor(0x191717)
+        .setFooter({
+            text: `Banned by ${moderator.username}`
+        });
 }
 
 export default {
@@ -56,7 +84,7 @@ export default {
         .addStringOption(option =>
             option
                 .setName('duration')
-                .setDescription('Ban duration. Example: 10m, 2h, 7d. Leave empty for permanent.')
+                .setDescription('10m, 2h, 7d, 1w. Leave empty for permanent.')
                 .setRequired(false)
         )
         .addStringOption(option =>
@@ -67,6 +95,7 @@ export default {
         )
         .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers),
 
+    // /ban
     async execute(interaction) {
         const user = interaction.options.getUser('user');
         const duration = interaction.options.getString('duration');
@@ -91,7 +120,8 @@ export default {
 
         if (!member.bannable) {
             return interaction.reply({
-                content: '❌ I cannot ban that member. Their role may be higher than mine.'
+                content:
+                    '❌ I cannot ban that member. Their role may be higher than mine.'
             });
         }
 
@@ -100,31 +130,24 @@ export default {
         if (duration && !durationMs) {
             return interaction.reply({
                 content:
-                    '❌ Invalid duration. Use formats like `10s`, `10m`, `2h`, `7d`, or `1w`.'
+                    '❌ Invalid duration. Use `10s`, `10m`, `2h`, `7d`, or `1w`.'
             });
         }
 
         try {
             await member.ban({ reason });
 
-            const permanent = !durationMs;
-
-            const embed = new EmbedBuilder()
-                .setTitle('🔨 Member Banned')
-                .setDescription(
-                    `**User:** ${user}\n` +
-                    `**Duration:** ${permanent ? 'Permanent' : formatDuration(durationMs)}\n` +
-                    `**Reason:** ${reason}`
-                )
-                .setFooter({
-                    text: `Banned by ${interaction.user.username}`
-                });
+            const embed = createBanEmbed(
+                user,
+                durationMs,
+                reason,
+                interaction.user
+            );
 
             await interaction.reply({
                 embeds: [embed]
             });
 
-            // Temporary ban
             if (durationMs) {
                 setTimeout(async () => {
                     try {
@@ -134,7 +157,7 @@ export default {
                         );
 
                         console.log(
-                            `Automatically unbanned ${user.tag} after ${formatDuration(durationMs)}.`
+                            `Automatically unbanned ${user.tag}.`
                         );
                     } catch (error) {
                         console.error(
@@ -144,7 +167,6 @@ export default {
                     }
                 }, durationMs);
             }
-
         } catch (error) {
             console.error('Ban error:', error);
 
@@ -156,6 +178,7 @@ export default {
         }
     },
 
+    // ?ban
     async prefixExecute(interaction) {
         const user = interaction.options.getUser('user');
         const duration = interaction.options.getString('duration');
@@ -165,7 +188,7 @@ export default {
         if (!user) {
             return interaction.reply({
                 content:
-                    '❌ Please mention a user.\nExample: `?ban @user 2h spamming`'
+                    '❌ Please provide a user ID or mention a user.\nExample: `?ban 123456789 10m spamming`'
             });
         }
 
@@ -204,18 +227,12 @@ export default {
         try {
             await member.ban({ reason });
 
-            const permanent = !durationMs;
-
-            const embed = new EmbedBuilder()
-                .setTitle('🔨 Member Banned')
-                .setDescription(
-                    `**User:** ${user}\n` +
-                    `**Duration:** ${permanent ? 'Permanent' : formatDuration(durationMs)}\n` +
-                    `**Reason:** ${reason}`
-                )
-                .setFooter({
-                    text: `Banned by ${interaction.user.username}`
-                });
+            const embed = createBanEmbed(
+                user,
+                durationMs,
+                reason,
+                interaction.user
+            );
 
             await interaction.reply({
                 embeds: [embed]
@@ -230,7 +247,7 @@ export default {
                         );
 
                         console.log(
-                            `Automatically unbanned ${user.tag} after ${formatDuration(durationMs)}.`
+                            `Automatically unbanned ${user.tag}.`
                         );
                     } catch (error) {
                         console.error(
@@ -240,7 +257,6 @@ export default {
                     }
                 }, durationMs);
             }
-
         } catch (error) {
             console.error('Prefix ban error:', error);
 
