@@ -55,20 +55,18 @@ function formatDuration(ms) {
     return `${weeks} week${weeks === 1 ? '' : 's'}`;
 }
 
-function createBanEmbed(user, durationMs, reason, moderator) {
-    const permanent = !durationMs;
+function createBanEmbed(user, durationMs, reason) {
+    const duration = durationMs
+        ? formatDuration(durationMs)
+        : 'Permanent';
 
     return new EmbedBuilder()
-        .setTitle('🔨 Member Banned')
-        .setDescription(
-            `**User:** <@${user.id}>\n` +
-            `**Duration:** ${permanent ? 'Permanent' : formatDuration(durationMs)}\n` +
-            `**Reason:** ${reason}`
-        )
         .setColor(0x191717)
-        .setFooter({
-            text: `Banned by ${moderator.username}`
-        });
+        .setDescription(
+            `**${user.username} was banned.**\n\n` +
+            `**Reason:** ${reason}\n` +
+            `**Duration:** ${duration}`
+        );
 }
 
 export default {
@@ -140,14 +138,14 @@ export default {
             const embed = createBanEmbed(
                 user,
                 durationMs,
-                reason,
-                interaction.user
+                reason
             );
 
             await interaction.reply({
                 embeds: [embed]
             });
 
+            // Temporary ban
             if (durationMs) {
                 setTimeout(async () => {
                     try {
@@ -167,6 +165,7 @@ export default {
                     }
                 }, durationMs);
             }
+
         } catch (error) {
             console.error('Ban error:', error);
 
@@ -230,14 +229,14 @@ export default {
             const embed = createBanEmbed(
                 user,
                 durationMs,
-                reason,
-                interaction.user
+                reason
             );
 
             await interaction.reply({
                 embeds: [embed]
             });
 
+            // Temporary ban
             if (durationMs) {
                 setTimeout(async () => {
                     try {
@@ -257,6 +256,7 @@ export default {
                     }
                 }, durationMs);
             }
+
         } catch (error) {
             console.error('Prefix ban error:', error);
 
