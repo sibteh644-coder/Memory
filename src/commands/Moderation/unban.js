@@ -1,73 +1,110 @@
-import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
-import { successEmbed } from '../../utils/embeds.js';
-import { logger } from '../../utils/logger.js';
-import { ModerationService } from '../../services/moderation/moderationService.js';
-import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
-import { InteractionHelper } from '../../utils/interactionHelper.js';
+import {
+    SlashCommandBuilder,
+    EmbedBuilder,
+    PermissionFlagsBits
+} from 'discord.js';
+
+function createUnbanEmbed(user, reason) {
+    return new EmbedBuilder()
+        .setColor(0x191717)
+        .setDescription(`**${user.username} was unbanned.**`)
+        .addFields({
+            name: 'Reason',
+            value: reason,
+            inline: true
+        });
+}
 
 export default {
     data: new SlashCommandBuilder()
-        .setName("unban")
-        .setDescription("Unban a user from the server")
+        .setName('unban')
+        .setDescription('Unban a user from the server.')
+        .addUserOption(option =>
+            option
+                .setName('user')
+                .setDescription('The user to unban.')
+                .setRequired(true)
+        )
         .addStringOption(option =>
             option
-                .setName("target")
-                .setDescription("The ID (or mention) of the user to unban")
-                .setRequired(true),
-        )
-        .addStringOption(option =>
-            option.setName("reason")
-                .setDescription("Reason for the unban")
-                .setRequired(false),
+                .setName('reason')
+                .setDescription('Reason for the unban.')
+                .setRequired(false)
         )
         .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers),
-    category: "moderation",
 
-    async execute(interaction, config, client) {
-        const deferSuccess = await InteractionHelper.safeDefer(interaction);
-        if (!deferSuccess) {
-            logger.warn(`Unban interaction defer failed`, {
-                userId: interaction.user.id,
-                guildId: interaction.guildId,
-                commandName: 'unban',
+    // /unban
+    async execute(interaction) {
+        const user = interaction.options.getUser('user');
+        const reason =
+            interaction.options.getString('reason') || 'No reason provided.';
+
+        try {
+            const ban = await interaction.guild.bans
+                .fetch(user.id)
+                .catch(() => null);
+
+            if (!ban) {
+                return interaction.reply({
+                    content: '❌ That user is not banned.'
+                });
+            }
+
+            await interaction.guild.members.unban(user.id, reason);
+
+            await interaction.reply({
+                embeds: [createUnbanEmbed(user, reason)]
             });
-            return;
+
+        } catch (error) {
+            console.error('Unban error:', error);
+
+            if (!interaction.replied) {
+                await interaction.reply({
+                    content: '❌ I could not unban that user.'
+                });
+            }
         }
-
-        const rawTarget = interaction.options.getString("target");
-        const targetId = rawTarget.replace(/[<@!>]/g, '').trim();
-
-        if (!/^\d{17,20}$/.test(targetId)) {
-            return replyUserError(interaction, {
-                type: ErrorTypes.USER_INPUT,
-                message: 'Please provide a valid user ID or mention.',
-            });
-        }
-
-        const targetUser = await client.users.fetch(targetId).catch(() => null);
-        if (!targetUser) {
-            return replyUserError(interaction, {
-                type: ErrorTypes.USER_INPUT,
-                message: `Could not find a user with the ID \`${targetId}\`.`,
-            });
-        }
-
-        const reason = interaction.options.getString("reason") || "No reason provided";
-
-        const result = await ModerationService.unbanUser({
-            guild: interaction.guild,
-            user: targetUser,
-            moderator: interaction.member,
-            reason,
-        });
-
-        await InteractionHelper.safeEditReply(interaction, {
-            embeds: [
-                successEmbed(
-                    "✅ User Unbanned",
-                    `Successfully unbanned **${targetUser.tag}** from the server.\n\n**Reason:** ${reason}\n**Case ID:** #${result.caseId}`,
-                ),
-            ],
-        });
     },
+
+    // ?unban
+    async prefixExecute(interaction) {
+        const user = interaction.options.getUser('user');
+        const reason =
+            interaction.options.getString('reason') || 'No reason provided.';
+
+        if (!user) {
+            return interaction.reply({
+                content:
+                    '❌ Please provide a user ID.\nExample: `?unban 123456789 appeal accepted`'
+            });
+        }
+
+        try {
+            const ban = await interaction.guild.bans
+                .fetch(user.id)
+                .catch(() => null);
+
+            if (!ban) {
+                return interaction.reply({
+                    content: '❌ That user is not banned.'
+                });
+            }
+
+            await interaction.guild.members.unban(user.id, reason);
+
+            await interaction.reply({
+                embeds: [createUnbanEmbed(user, reason)]
+            });
+
+        } catch (error) {
+            console.error('Prefix unban error:', error);
+
+            if (!interaction.replied) {
+                await interaction.reply({
+                    content: '❌ I could not unban that user.'
+                });
+            }
+        }
+    }
 };
