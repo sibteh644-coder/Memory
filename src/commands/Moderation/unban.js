@@ -36,8 +36,10 @@ export default {
     // /unban
     async execute(interaction) {
         const user = interaction.options.getUser('user');
+
         const reason =
-            interaction.options.getString('reason') || 'No reason provided.';
+            interaction.options.getString('reason') ||
+            'No reason provided.';
 
         try {
             const ban = await interaction.guild.bans
@@ -50,10 +52,15 @@ export default {
                 });
             }
 
-            await interaction.guild.members.unban(user.id, reason);
+            await interaction.guild.members.unban(
+                user.id,
+                reason
+            );
 
             await interaction.reply({
-                embeds: [createUnbanEmbed(user, reason)]
+                embeds: [
+                    createUnbanEmbed(user, reason)
+                ]
             });
 
         } catch (error) {
@@ -68,19 +75,70 @@ export default {
     },
 
     // ?unban
-    async prefixExecute(interaction) {
-        const user = interaction.options.getUser('user');
-        const reason =
-            interaction.options.getString('reason') || 'No reason provided.';
+    async prefixExecute(interaction, args, client) {
 
-        if (!user) {
+        if (!args || args.length === 0) {
             return interaction.reply({
                 content:
-                    '❌ Please provide a user ID.\nExample: `?unban 123456789 appeal accepted`'
+                    '❌ Please provide a username, mention, or user ID.\nExample: `?unban @user appeal accepted`'
             });
         }
 
+        const input = args[0];
+
+        let user = null;
+
         try {
+            // User ID
+            if (/^\d{17,20}$/.test(input)) {
+                user = await client.users.fetch(input);
+            }
+
+            // Mention
+            else if (/^<@!?(\d+)>$/.test(input)) {
+                const userId = input.match(/^<@!?(\d+)>$/)[1];
+                user = await client.users.fetch(userId);
+            }
+
+            // Username
+            else {
+                const username = input.toLowerCase();
+
+                // Search through cached users first
+                user = client.users.cache.find(
+                    u =>
+                        u.username.toLowerCase() === username ||
+                        u.tag?.toLowerCase() === username
+                );
+
+                // Try guild members if not cached
+                if (!user) {
+                    const members = await interaction.guild.members.fetch();
+
+                    const member = members.find(
+                        m =>
+                            m.user.username.toLowerCase() === username ||
+                            m.user.tag?.toLowerCase() === username ||
+                            m.displayName.toLowerCase() === username
+                    );
+
+                    if (member) {
+                        user = member.user;
+                    }
+                }
+            }
+
+            if (!user) {
+                return interaction.reply({
+                    content:
+                        '❌ I could not find that user. Use their username, mention, or ID.'
+                });
+            }
+
+            const reason =
+                args.slice(1).join(' ') ||
+                'No reason provided.';
+
             const ban = await interaction.guild.bans
                 .fetch(user.id)
                 .catch(() => null);
@@ -91,10 +149,15 @@ export default {
                 });
             }
 
-            await interaction.guild.members.unban(user.id, reason);
+            await interaction.guild.members.unban(
+                user.id,
+                reason
+            );
 
             await interaction.reply({
-                embeds: [createUnbanEmbed(user, reason)]
+                embeds: [
+                    createUnbanEmbed(user, reason)
+                ]
             });
 
         } catch (error) {
@@ -102,7 +165,8 @@ export default {
 
             if (!interaction.replied) {
                 await interaction.reply({
-                    content: '❌ I could not unban that user.'
+                    content:
+                        '❌ I could not find or unban that user.'
                 });
             }
         }
