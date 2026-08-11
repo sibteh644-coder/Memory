@@ -18,7 +18,6 @@ export default {
             return message.reply('You need the **Manage Roles** permission.');
         }
 
-        // Everything after the mentioned user
         const mentionIndex = parts.findIndex(part =>
             part.includes(target.id)
         );
@@ -53,25 +52,27 @@ export default {
 
         if (role.position >= botMember.roles.highest.position) {
             return message.reply(
-                'I cannot give that role because it is above my highest role.'
-            );
-        }
-
-        if (target.roles.cache.has(role.id)) {
-            return message.reply(
-                `**${target.user.username}** already has **${role.name}**.`
+                'I cannot manage that role because it is above my highest role.'
             );
         }
 
         try {
-            await target.roles.add(role);
+            if (target.roles.cache.has(role.id)) {
+                await target.roles.remove(role);
 
-            return message.reply(
-                `Added **${role.name}** to **${target.user.username}**.`
-            );
+                return message.reply(
+                    `Removed **${role.name}** from **${target.user.username}**.`
+                );
+            } else {
+                await target.roles.add(role);
+
+                return message.reply(
+                    `Added **${role.name}** to **${target.user.username}**.`
+                );
+            }
         } catch (error) {
-            console.error(error);
-            return message.reply('I could not give that role.');
+            console.error('Role command error:', error);
+            return message.reply('I could not modify that role.');
         }
     }
 };
