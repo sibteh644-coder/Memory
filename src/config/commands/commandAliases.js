@@ -76,7 +76,6 @@ export const commandAliases = {
 
     'ver': 'verify',
     'vadmin': 'verification',
-    'av': 'autoverify',
 
     'welcome': 'welcome',
     'greet': 'greet',
