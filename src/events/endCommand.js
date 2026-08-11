@@ -9,15 +9,15 @@ export default {
         if (message.channel.id !== '1478900615265386596') return;
 
         // Command
-        if (message.content.trim().toLowerCase() !== '?end') return;
+        if (message.content.trim().toLowerCase() !== '.end') return;
 
-        // Find an existing "raid ended" message from the bot
+        // Find existing raid-ended message
         const messages = await message.channel.messages.fetch({ limit: 50 });
 
         const existingMessage = messages.find(
             msg =>
                 msg.author.id === message.client.user.id &&
-                msg.content === '**The raid has ended, you can leave now.** ⚠️'
+                msg.content === '# The raid has ended, you can leave now. ⚠️'
         );
 
         if (existingMessage) {
@@ -28,7 +28,7 @@ export default {
 
         // Toggle ON
         await message.channel.send(
-            '**The raid has ended, you can leave now.** ⚠️'
+            '# The raid has ended, you can leave now. ⚠️'
         );
     }
 };
