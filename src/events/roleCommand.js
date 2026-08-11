@@ -4,11 +4,9 @@ export default {
     async execute(message) {
         if (message.author.bot || !message.guild) return;
 
-        const content = message.content.trim();
+        const parts = message.content.trim().split(/\s+/);
 
-        if (!content.toLowerCase().startsWith('?role ')) return;
-
-        const parts = content.split(/\s+/);
+        if (parts[0].toLowerCase() !== '?role') return;
 
         const target = message.mentions.members.first();
 
@@ -20,30 +18,23 @@ export default {
             return message.reply('You need the **Manage Roles** permission.');
         }
 
-        // Everything after the mention
+        // Everything after the mentioned user
         const mentionIndex = parts.findIndex(part =>
             part.includes(target.id)
         );
 
-        const roleName = parts
-            .slice(mentionIndex + 1)
-            .join(' ')
-            .trim();
+        let roleName = parts.slice(mentionIndex + 1).join(' ').trim();
 
-        if (!roleName) {
-            return message.reply('Please provide a role name.');
+        // Allow "2 high" to find "stage 2 - high"
+        if (/^\d+\s+(low|medium|high)$/i.test(roleName)) {
+            roleName = `stage ${roleName}`;
         }
 
-        // Removes spaces, -, _, etc.
-        const clean = (name) =>
-            name
-                .toLowerCase()
-                .replace(/[^a-z0-9]/g, '');
-
-        const input = clean(roleName);
+        const normalize = (name) =>
+            name.toLowerCase().replace(/[^a-z0-9]/g, '');
 
         const role = message.guild.roles.cache.find(
-            r => clean(r.name) === input
+            r => normalize(r.name) === normalize(roleName)
         );
 
         if (!role) {
