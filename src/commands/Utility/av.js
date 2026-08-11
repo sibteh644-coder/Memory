@@ -11,13 +11,12 @@ export default {
                 .setRequired(false)
         ),
 
-    // /av
     async execute(interaction) {
         const user = interaction.options.getUser('user') || interaction.user;
 
         const avatar = user.displayAvatarURL({
             size: 4096,
-            dynamic: true
+            extension: 'png'
         });
 
         const embed = new EmbedBuilder()
@@ -33,13 +32,12 @@ export default {
         });
     },
 
-    // ?av
-    async prefixExecute(message, args) {
-        const user = message.mentions.users.first() || message.author;
+    async prefixExecute(interaction) {
+        const user = interaction.options.getUser('user') || interaction.user;
 
         const avatar = user.displayAvatarURL({
             size: 4096,
-            dynamic: true
+            extension: 'png'
         });
 
         const embed = new EmbedBuilder()
@@ -47,10 +45,10 @@ export default {
             .setImage(avatar)
             .setURL(avatar)
             .setFooter({
-                text: `Requested by ${message.author.username}`
+                text: `Requested by ${interaction.user.username}`
             });
 
-        await message.reply({
+        await interaction.reply({
             embeds: [embed]
         });
     }
