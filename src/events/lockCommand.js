@@ -5,10 +5,8 @@ export default {
         if (message.author.bot) return;
         if (!message.guild) return;
 
-        // Command
         if (message.content.trim().toLowerCase() !== '?lock') return;
 
-        // Check permission
         if (!message.member.permissions.has('ManageChannels')) {
             return message.reply('You need the **Manage Channels** permission.');
         }
@@ -16,13 +14,26 @@ export default {
         const channel = message.channel;
 
         try {
-            // Lock the current channel for @everyone
+            // Lock @everyone
             await channel.permissionOverwrites.edit(
                 message.guild.roles.everyone,
                 {
                     SendMessages: false
                 }
             );
+
+            // Lock every role that currently has permission to send
+            for (const overwrite of channel.permissionOverwrites.cache.values()) {
+                if (overwrite.id === message.guild.roles.everyone.id) continue;
+
+                const role = message.guild.roles.cache.get(overwrite.id);
+
+                if (role) {
+                    await channel.permissionOverwrites.edit(role, {
+                        SendMessages: false
+                    });
+                }
+            }
 
             await message.reply('🔒 This channel has been locked.');
         } catch (error) {
