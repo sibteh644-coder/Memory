@@ -35,7 +35,7 @@ export default {
                 }
             }
 
-            await message.reply('🔓 This channel has been unlocked.');
+            await message.reply(' This channel has been unlocked.');
         } catch (error) {
             console.error('Unlock command error:', error);
             await message.reply('I could not unlock this channel.');
