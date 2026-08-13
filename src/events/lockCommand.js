@@ -35,7 +35,7 @@ export default {
                 }
             }
 
-            await message.reply('🔒 This channel has been locked.');
+            await message.reply( 'This channel has been locked.');
         } catch (error) {
             console.error('Lock command error:', error);
             await message.reply('I could not lock this channel.');
