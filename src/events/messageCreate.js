@@ -124,25 +124,34 @@ if (!parsed && prefix !== '?') {
       return;
     }
 
-    const mockInteractionForProtection = {
-      guildId: message.guild.id,
-      user: message.author,
-    };
-    const abuseProtection = await enforceAbuseProtection(
-      mockInteractionForProtection,
-      command,
-      resolvedCommandName,
+    // Skip abuse-protection cooldown for ?purge
+if (resolvedCommandName !== 'purge') {
+  const mockInteractionForProtection = {
+    guildId: message.guild.id,
+    user: message.author,
+  };
+
+  const abuseProtection = await enforceAbuseProtection(
+    mockInteractionForProtection,
+    command,
+    resolvedCommandName,
+  );
+
+  if (!abuseProtection.allowed) {
+    const formattedCooldown = formatCooldownDuration(
+      abuseProtection.remainingMs
     );
-    if (!abuseProtection.allowed) {
-      const formattedCooldown = formatCooldownDuration(abuseProtection.remainingMs);
-      const embed = createEmbed({
-        title: 'Command Cooldown',
-        description: `This command is on cooldown. Please wait ${formattedCooldown} before trying again.`,
-        color: 'error',
-      });
-      await message.channel.send({ embeds: [embed] }).catch(() => {});
-      return;
-    }
+
+    const embed = createEmbed({
+      title: 'Command Cooldown',
+      description: `This command is on cooldown. Please wait ${formattedCooldown} before trying again.`,
+      color: 'error',
+    });
+
+    await message.channel.send({ embeds: [embed] }).catch(() => {});
+    return;
+  }
+}
 
     logger.info(`Executing prefix command: ${prefix}${commandName} (resolved to ${resolvedCommandName}) by ${message.author.tag}`);
     
