@@ -1,124 +1,391 @@
-import { getColor } from '../../config/bot.js';
-import { SlashCommandBuilder, PermissionFlagsBits, ChannelType, EmbedBuilder, MessageFlags } from 'discord.js';
-import { getWelcomeConfig, updateWelcomeConfig } from '../../utils/database.js';
-import { formatWelcomeMessage, truncateForEmbedField } from '../../utils/welcome.js';
-import { logger } from '../../utils/logger.js';
-import { InteractionHelper } from '../../utils/interactionHelper.js';
-import { ErrorTypes, replyUserError } from '../../utils/errorHandler.js';
+import {
+    SlashCommandBuilder,
+    PermissionFlagsBits,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    ChannelSelectMenuBuilder,
+    ChannelType,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle,
+    EmbedBuilder
+} from 'discord.js';
+
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const dataDir = path.join(__dirname, '../data');
+const configFile = path.join(dataDir, 'welcome.json');
+
+function loadConfig() {
+    if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+    }
+
+    if (!fs.existsSync(configFile)) {
+        fs.writeFileSync(configFile, '{}');
+    }
+
+    return JSON.parse(fs.readFileSync(configFile, 'utf8'));
+}
+
+function saveConfig(config) {
+    if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+    }
+
+    fs.writeFileSync(configFile, JSON.stringify(config, null, 2));
+}
+
+function getGuildConfig(guildId) {
+    const config = loadConfig();
+
+    if (!config[guildId]) {
+        config[guildId] = {
+            enabled: false,
+            channelId: null,
+            title: 'Welcome {user}!',
+            message: 'Hope you enjoy your stay in **{server}**!\nPlease chat in {channel}',
+            image: null,
+            color: '#191717'
+        };
+
+        saveConfig(config);
+    }
+
+    return config[guildId];
+}
+
+function replacePlaceholders(text, member) {
+    return text
+        .replaceAll('{user}', `<@${member.id}>`)
+        .replaceAll('{username}', member.user.username)
+        .replaceAll('{server}', member.guild.name)
+        .replaceAll('{channel}', member.guild.channels.cache.get(getGuildConfig(member.guild.id).channelId)?.toString() || '#channel')
+        .replaceAll('{count}', member.guild.memberCount.toString());
+}
+
+function createDashboard(guild) {
+    const config = getGuildConfig(guild.id);
+
+    const channel = config.channelId
+        ? guild.channels.cache.get(config.channelId)
+        : null;
+
+    const embed = new EmbedBuilder()
+        .setColor(config.color || '#191717')
+        .setTitle('Welcome Dashboard')
+        .setDescription(
+            `Configure your server's welcome message here.\n\n` +
+            `**Status:** ${config.enabled ? '🟢 Enabled' : '🔴 Disabled'}\n` +
+            `**Channel:** ${channel ? channel.toString() : '❌ Not set'}\n\n` +
+            `**Title:** ${config.title}\n` +
+            `**Message:** ${config.message}\n` +
+            `**Image:** ${config.image ? '✅ Set' : '❌ Not set'}\n` +
+            `**Color:** \`${config.color}\``
+        )
+        .setFooter({
+            text: 'Use the buttons below to configure your welcome message.'
+        });
+
+    const channelRow = new ActionRowBuilder().addComponents(
+        new ChannelSelectMenuBuilder()
+            .setCustomId(`welcome_channel_${guild.id}`)
+            .setPlaceholder('Select welcome channel')
+            .setChannelTypes(ChannelType.GuildText)
+    );
+
+    const buttonRow1 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`welcome_message_${guild.id}`)
+            .setLabel('Edit Message')
+            .setEmoji('✏️')
+            .setStyle(ButtonStyle.Primary),
+
+        new ButtonBuilder()
+            .setCustomId(`welcome_image_${guild.id}`)
+            .setLabel('Set Image')
+            .setEmoji('🖼️')
+            .setStyle(ButtonStyle.Secondary),
+
+        new ButtonBuilder()
+            .setCustomId(`welcome_color_${guild.id}`)
+            .setLabel('Set Color')
+            .setEmoji('🎨')
+            .setStyle(ButtonStyle.Secondary)
+    );
+
+    const buttonRow2 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId(`welcome_preview_${guild.id}`)
+            .setLabel('Preview')
+            .setEmoji('👀')
+            .setStyle(ButtonStyle.Success),
+
+        new ButtonBuilder()
+            .setCustomId(`welcome_toggle_${guild.id}`)
+            .setLabel(config.enabled ? 'Disable' : 'Enable')
+            .setEmoji(config.enabled ? '🔴' : '🟢')
+            .setStyle(config.enabled ? ButtonStyle.Danger : ButtonStyle.Success)
+    );
+
+    return {
+        embeds: [embed],
+        components: [channelRow, buttonRow1, buttonRow2]
+    };
+}
 
 export default {
     data: new SlashCommandBuilder()
         .setName('welcome')
-        .setDescription('Configure the welcome system')
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('setup')
-                .setDescription('Set up the welcome message')
-                .addChannelOption(option =>
-                    option.setName('channel')
-                        .setDescription('The channel to send welcome messages to')
-                        .addChannelTypes(ChannelType.GuildText)
-                        .setRequired(true))
-                .addStringOption(option =>
-                    option.setName('message')
-                        .setDescription('Welcome message. Variables: {user}, {username}, {server}, {memberCount}')
-                        .setRequired(true))
-                .addStringOption(option =>
-                    option.setName('image')
-                        .setDescription('URL of the image to include in the welcome message')
-                        .setRequired(false))
-                .addBooleanOption(option =>
-                    option.setName('ping')
-                        .setDescription('Whether to ping the user in the welcome message')
-                        .setRequired(false))),
+        .setDescription('Configure the server welcome message.')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
     async execute(interaction) {
-        try {
-            const deferSuccess = await InteractionHelper.safeDefer(interaction);
-            if (!deferSuccess) {
-                logger.warn(`Welcome interaction defer failed`, {
-                    userId: interaction.user.id,
-                    guildId: interaction.guildId,
-                    commandName: 'welcome'
+        const dashboard = createDashboard(interaction.guild);
+
+        await interaction.reply({
+            ...dashboard,
+            ephemeral: true
+        });
+
+        const message = await interaction.fetchReply();
+
+        const collector = message.createMessageComponentCollector({
+            time: 15 * 60 * 1000
+        });
+
+        collector.on('collect', async component => {
+            if (!component.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
+                return component.reply({
+                    content: '❌ You need **Manage Server** permission to use this.',
+                    ephemeral: true
                 });
+            }
+
+            const guildId = interaction.guild.id;
+            const config = getGuildConfig(guildId);
+
+            // CHANNEL SELECT
+            if (component.customId === `welcome_channel_${guildId}`) {
+                const channelId = component.values[0];
+
+                config.channelId = channelId;
+
+                const allConfig = loadConfig();
+                allConfig[guildId] = config;
+                saveConfig(allConfig);
+
+                await component.update(createDashboard(interaction.guild));
                 return;
             }
-        } catch (deferError) {
-            logger.error(`Welcome defer error`, { error: deferError.message });
-            return;
-        }
 
-        const { options, guild, client } = interaction;
+            // EDIT MESSAGE
+            if (component.customId === `welcome_message_${guildId}`) {
+                const modal = new ModalBuilder()
+                    .setCustomId(`welcome_message_modal_${guildId}`)
+                    .setTitle('Edit Welcome Message');
 
-        if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
-            return await replyUserError(interaction, { type: ErrorTypes.PERMISSION, message: 'You need the **Manage Server** permission to use `/welcome`.' });
-        }
+                const titleInput = new TextInputBuilder()
+                    .setCustomId('welcome_title')
+                    .setLabel('Welcome title')
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(true)
+                    .setMaxLength(256)
+                    .setValue(config.title);
 
-        const subcommand = options.getSubcommand();
+                const messageInput = new TextInputBuilder()
+                    .setCustomId('welcome_text')
+                    .setLabel('Welcome message')
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setRequired(true)
+                    .setMaxLength(4000)
+                    .setValue(config.message);
 
-        if (subcommand === 'setup') {
-            const channel = options.getChannel('channel');
-            const message = options.getString('message');
-            const image = options.getString('image');
-            const ping = options.getBoolean('ping') ?? false;
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(titleInput),
+                    new ActionRowBuilder().addComponents(messageInput)
+                );
 
-            const existingConfig = await getWelcomeConfig(client, guild.id);
-            if (existingConfig?.channelId) {
-                logger.info(`[Welcome] Setup blocked because config already exists in channel ${existingConfig.channelId} for guild ${guild.id}`);
-                return await replyUserError(interaction, { type: ErrorTypes.UNKNOWN, message: `Welcome is already configured for <#${existingConfig.channelId}>. Use **/greet dashboard** to customize channel, message, ping, or image.` });
-            }
-            
-            if (!message || message.trim().length === 0) {
-                logger.warn(`[Welcome] Empty message provided by ${interaction.user.tag} in ${guild.name}`);
-                return await replyUserError(interaction, { type: ErrorTypes.VALIDATION, message: 'Welcome message cannot be empty' });
-            }
+                await component.showModal(modal);
 
-            if (image) {
                 try {
-                    new URL(image);
-                } catch (e) {
-                    logger.warn(`[Welcome] Invalid image URL provided by ${interaction.user.tag}: ${image}`);
-                    return await replyUserError(interaction, { type: ErrorTypes.VALIDATION, message: 'Please provide a valid image URL (must start with http:// or https://' });
+                    const submitted = await component.awaitModalSubmit({
+                        time: 120000,
+                        filter: i =>
+                            i.customId === `welcome_message_modal_${guildId}` &&
+                            i.user.id === component.user.id
+                    });
+
+                    config.title = submitted.fields.getTextInputValue('welcome_title');
+                    config.message = submitted.fields.getTextInputValue('welcome_text');
+
+                    const allConfig = loadConfig();
+                    allConfig[guildId] = config;
+                    saveConfig(allConfig);
+
+                    await submitted.reply({
+                        content: '✅ Welcome message updated.',
+                        ephemeral: true
+                    });
+
+                    await interaction.editReply(createDashboard(interaction.guild));
+                } catch {
+                    // Modal timed out
                 }
+
+                return;
             }
 
-            try {
-                await updateWelcomeConfig(client, guild.id, {
-                    enabled: true,
-                    channelId: channel.id,
-                    welcomeMessage: message,
-                    welcomeImage: image || undefined,
-                    welcomePing: ping
-                });
+            // SET IMAGE
+            if (component.customId === `welcome_image_${guildId}`) {
+                const modal = new ModalBuilder()
+                    .setCustomId(`welcome_image_modal_${guildId}`)
+                    .setTitle('Set Welcome Image');
 
-                logger.info(`[Welcome] Setup configured by ${interaction.user.tag} for guild ${guild.name} (${guild.id})`);
+                const imageInput = new TextInputBuilder()
+                    .setCustomId('welcome_image_url')
+                    .setLabel('Image URL')
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(false)
+                    .setPlaceholder('https://example.com/image.png')
+                    .setValue(config.image || '');
 
-                const previewMessage = formatWelcomeMessage(message, {
-                    user: interaction.user,
-                    guild
-                });
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(imageInput)
+                );
+
+                await component.showModal(modal);
+
+                try {
+                    const submitted = await component.awaitModalSubmit({
+                        time: 120000,
+                        filter: i =>
+                            i.customId === `welcome_image_modal_${guildId}` &&
+                            i.user.id === component.user.id
+                    });
+
+                    config.image =
+                        submitted.fields.getTextInputValue('welcome_image_url').trim() || null;
+
+                    const allConfig = loadConfig();
+                    allConfig[guildId] = config;
+                    saveConfig(allConfig);
+
+                    await submitted.reply({
+                        content: config.image
+                            ? '✅ Welcome image updated.'
+                            : '✅ Welcome image removed.',
+                        ephemeral: true
+                    });
+
+                    await interaction.editReply(createDashboard(interaction.guild));
+                } catch {
+                    // Modal timed out
+                }
+
+                return;
+            }
+
+            // COLOR
+            if (component.customId === `welcome_color_${guildId}`) {
+                const modal = new ModalBuilder()
+                    .setCustomId(`welcome_color_modal_${guildId}`)
+                    .setTitle('Set Embed Color');
+
+                const colorInput = new TextInputBuilder()
+                    .setCustomId('welcome_color_value')
+                    .setLabel('Hex color')
+                    .setStyle(TextInputStyle.Short)
+                    .setRequired(true)
+                    .setPlaceholder('#191717')
+                    .setValue(config.color);
+
+                modal.addComponents(
+                    new ActionRowBuilder().addComponents(colorInput)
+                );
+
+                await component.showModal(modal);
+
+                try {
+                    const submitted = await component.awaitModalSubmit({
+                        time: 120000,
+                        filter: i =>
+                            i.customId === `welcome_color_modal_${guildId}` &&
+                            i.user.id === component.user.id
+                    });
+
+                    const color = submitted.fields
+                        .getTextInputValue('welcome_color_value')
+                        .trim();
+
+                    if (!/^#[0-9A-Fa-f]{6}$/.test(color)) {
+                        return submitted.reply({
+                            content: '❌ Invalid color. Use a hex color such as `#191717`.',
+                            ephemeral: true
+                        });
+                    }
+
+                    config.color = color;
+
+                    const allConfig = loadConfig();
+                    allConfig[guildId] = config;
+                    saveConfig(allConfig);
+
+                    await submitted.reply({
+                        content: `✅ Welcome color changed to \`${color}\`.`,
+                        ephemeral: true
+                    });
+
+                    await interaction.editReply(createDashboard(interaction.guild));
+                } catch {
+                    // Modal timed out
+                }
+
+                return;
+            }
+
+            // TOGGLE
+            if (component.customId === `welcome_toggle_${guildId}`) {
+                config.enabled = !config.enabled;
+
+                const allConfig = loadConfig();
+                allConfig[guildId] = config;
+                saveConfig(allConfig);
+
+                await component.update(createDashboard(interaction.guild));
+                return;
+            }
+
+            // PREVIEW
+            if (component.customId === `welcome_preview_${guildId}`) {
+                const member = interaction.member;
 
                 const embed = new EmbedBuilder()
-                    .setColor(getColor('success'))
-                    .setTitle('Welcome System Configured')
-                    .setDescription(`Welcome messages will now be sent to ${channel}`)
-                    .addFields(
-                        { name: 'Message Preview', value: truncateForEmbedField(previewMessage) },
-                        { name: 'Ping User', value: ping ? 'Yes' : 'No' },
-                        { name: 'Status', value: 'Enabled' }
-                    )
-                    .setFooter({ text: 'Tip: Use /greet dashboard to customize welcome settings' });
+                    .setColor(config.color || '#191717')
+                    .setTitle(replacePlaceholders(config.title, member))
+                    .setDescription(replacePlaceholders(config.message, member));
 
-                if (image) {
-                    embed.setImage(image);
+                if (config.image) {
+                    embed.setThumbnail(config.image);
                 }
 
-                await InteractionHelper.safeEditReply(interaction, { embeds: [embed] });
-            } catch (error) {
-                logger.error(`[Welcome] Failed to setup welcome system for guild ${guild.id}:`, error);
-                await replyUserError(interaction, { type: ErrorTypes.UNKNOWN, message: 'An error occurred while configuring the welcome system. Please try again.' });
+                embed.setFooter({
+                    text: `You're the ${interaction.guild.memberCount} member in the server!`
+                });
+
+                await component.reply({
+                    embeds: [embed],
+                    ephemeral: true
+                });
+
+                return;
             }
-        }
-    },
+        });
+    }
 };
