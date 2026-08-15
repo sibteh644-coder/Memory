@@ -6,9 +6,7 @@ import {
     ButtonStyle,
     ChannelSelectMenuBuilder,
     ChannelType,
-    ModalBuilder,
-    TextInputBuilder,
-    TextInputStyle,
+    StringSelectMenuBuilder,
     EmbedBuilder
 } from 'discord.js';
 
@@ -20,372 +18,431 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const dataDir = path.join(__dirname, '../data');
-const configFile = path.join(dataDir, 'welcome.json');
+const dataFile = path.join(dataDir, 'welcome.json');
 
-function loadConfig() {
+function ensureDataFile() {
     if (!fs.existsSync(dataDir)) {
         fs.mkdirSync(dataDir, { recursive: true });
     }
 
-    if (!fs.existsSync(configFile)) {
-        fs.writeFileSync(configFile, '{}');
+    if (!fs.existsSync(dataFile)) {
+        fs.writeFileSync(dataFile, '{}');
     }
-
-    return JSON.parse(fs.readFileSync(configFile, 'utf8'));
 }
 
-function saveConfig(config) {
-    if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
-    }
+export function loadWelcomeData() {
+    ensureDataFile();
 
-    fs.writeFileSync(configFile, JSON.stringify(config, null, 2));
+    try {
+        return JSON.parse(fs.readFileSync(dataFile, 'utf8'));
+    } catch {
+        return {};
+    }
 }
 
-function getGuildConfig(guildId) {
-    const config = loadConfig();
+export function saveWelcomeData(data) {
+    ensureDataFile();
+    fs.writeFileSync(dataFile, JSON.stringify(data, null, 2));
+}
 
-    if (!config[guildId]) {
-        config[guildId] = {
+export function getWelcomeConfig(guildId) {
+    const data = loadWelcomeData();
+
+    if (!data[guildId]) {
+        data[guildId] = {
             enabled: false,
             channelId: null,
+
             title: 'Welcome {user}!',
-            message: 'Hope you enjoy your stay in **{server}**!\nPlease chat in {channel}',
-            image: null,
-            color: '#191717'
+            description:
+                'Hope you enjoy your stay in **{server}**!\n' +
+                'Please chat in {channel}',
+
+            color: '#191717',
+
+            author: {
+                enabled: false,
+                name: '',
+                iconURL: ''
+            },
+
+            thumbnail: '',
+            image: '',
+
+            footer: {
+                enabled: true,
+                text: "You're the {count} member in the server!",
+                iconURL: ''
+            },
+
+            timestamp: false
         };
 
-        saveConfig(config);
+        saveWelcomeData(data);
     }
 
-    return config[guildId];
+    return data[guildId];
 }
 
-function replacePlaceholders(text, member) {
+export function updateWelcomeConfig(guildId, config) {
+    const data = loadWelcomeData();
+    data[guildId] = config;
+    saveWelcomeData(data);
+}
+
+export function replacePlaceholders(text, member, config) {
+    if (!text) return '';
+
+    const channel = member.guild.channels.cache.get(config.channelId);
+
     return text
         .replaceAll('{user}', `<@${member.id}>`)
         .replaceAll('{username}', member.user.username)
         .replaceAll('{server}', member.guild.name)
-        .replaceAll('{channel}', member.guild.channels.cache.get(getGuildConfig(member.guild.id).channelId)?.toString() || '#channel')
+        .replaceAll('{channel}', channel ? channel.toString() : '#channel')
         .replaceAll('{count}', member.guild.memberCount.toString());
 }
 
-function createDashboard(guild) {
-    const config = getGuildConfig(guild.id);
+export function buildWelcomeEmbed(member, config) {
+    const embed = new EmbedBuilder()
+        .setColor(config.color || '#191717');
+
+    if (config.title) {
+        embed.setTitle(
+            replacePlaceholders(config.title, member, config)
+        );
+    }
+
+    if (config.description) {
+        embed.setDescription(
+            replacePlaceholders(config.description, member, config)
+        );
+    }
+
+    if (
+        config.author?.enabled &&
+        config.author.name
+    ) {
+        const author = {
+            name: replacePlaceholders(
+                config.author.name,
+                member,
+                config
+            )
+        };
+
+        if (config.author.iconURL) {
+            author.iconURL = config.author.iconURL;
+        }
+
+        embed.setAuthor(author);
+    }
+
+    if (config.thumbnail) {
+        try {
+            embed.setThumbnail(config.thumbnail);
+        } catch {}
+    }
+
+    if (config.image) {
+        try {
+            embed.setImage(config.image);
+        } catch {}
+    }
+
+    if (
+        config.footer?.enabled &&
+        config.footer.text
+    ) {
+        const footer = {
+            text: replacePlaceholders(
+                config.footer.text,
+                member,
+                config
+            )
+        };
+
+        if (config.footer.iconURL) {
+            footer.iconURL = config.footer.iconURL;
+        }
+
+        embed.setFooter(footer);
+    }
+
+    if (config.timestamp) {
+        embed.setTimestamp();
+    }
+
+    return embed;
+}
+
+function dashboardEmbed(guild) {
+    const config = getWelcomeConfig(guild.id);
 
     const channel = config.channelId
         ? guild.channels.cache.get(config.channelId)
         : null;
 
-    const embed = new EmbedBuilder()
+    const author = config.author?.enabled
+        ? config.author.name || 'Not configured'
+        : 'Disabled';
+
+    const footer = config.footer?.enabled
+        ? config.footer.text || 'Not configured'
+        : 'Disabled';
+
+    return new EmbedBuilder()
         .setColor(config.color || '#191717')
-        .setTitle('Welcome Dashboard')
+        .setTitle('🛠️ Welcome Embed Builder')
         .setDescription(
-            `Configure your server's welcome message here.\n\n` +
-            `**Status:** ${config.enabled ? '🟢 Enabled' : '🔴 Disabled'}\n` +
-            `**Channel:** ${channel ? channel.toString() : '❌ Not set'}\n\n` +
-            `**Title:** ${config.title}\n` +
-            `**Message:** ${config.message}\n` +
-            `**Image:** ${config.image ? '✅ Set' : '❌ Not set'}\n` +
-            `**Color:** \`${config.color}\``
+            'Configure your server welcome embed using the controls below.'
+        )
+        .addFields(
+            {
+                name: 'Status',
+                value: config.enabled
+                    ? '🟢 Enabled'
+                    : '🔴 Disabled',
+                inline: true
+            },
+            {
+                name: 'Channel',
+                value: channel
+                    ? channel.toString()
+                    : '❌ Not set',
+                inline: true
+            },
+            {
+                name: 'Color',
+                value: `\`${config.color || '#191717'}\``,
+                inline: true
+            },
+            {
+                name: '📝 Title',
+                value: config.title
+                    ? `\`\`\`\n${config.title.slice(0, 1000)}\n\`\`\``
+                    : 'Not set'
+            },
+            {
+                name: '📄 Description',
+                value: config.description
+                    ? `\`\`\`\n${config.description.slice(0, 1000)}\n\`\`\``
+                    : 'Not set'
+            },
+            {
+                name: '👤 Author',
+                value: author,
+                inline: true
+            },
+            {
+                name: '🖼️ Thumbnail',
+                value: config.thumbnail
+                    ? '✅ Set'
+                    : '❌ Not set',
+                inline: true
+            },
+            {
+                name: '🌄 Image',
+                value: config.image
+                    ? '✅ Set'
+                    : '❌ Not set',
+                inline: true
+            },
+            {
+                name: '🦶 Footer',
+                value: footer,
+                inline: true
+            },
+            {
+                name: '🕐 Timestamp',
+                value: config.timestamp
+                    ? '🟢 Enabled'
+                    : '🔴 Disabled',
+                inline: true
+            }
         )
         .setFooter({
-            text: 'Use the buttons below to configure your welcome message.'
+            text: 'Changes are saved automatically.'
         });
+}
 
-    const channelRow = new ActionRowBuilder().addComponents(
-        new ChannelSelectMenuBuilder()
-            .setCustomId(`welcome_channel_${guild.id}`)
-            .setPlaceholder('Select welcome channel')
-            .setChannelTypes(ChannelType.GuildText)
-    );
+export function createWelcomeDashboard(guild) {
+    const config = getWelcomeConfig(guild.id);
 
-    const buttonRow1 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-            .setCustomId(`welcome_message_${guild.id}`)
-            .setLabel('Edit Message')
-            .setEmoji('✏️')
-            .setStyle(ButtonStyle.Primary),
+    const channelRow = new ActionRowBuilder()
+        .addComponents(
+            new ChannelSelectMenuBuilder()
+                .setCustomId('welcome_select_channel')
+                .setPlaceholder('📢 Select welcome channel')
+                .setChannelTypes(ChannelType.GuildText)
+                .setMaxValues(1)
+        );
 
-        new ButtonBuilder()
-            .setCustomId(`welcome_image_${guild.id}`)
-            .setLabel('Set Image')
-            .setEmoji('🖼️')
-            .setStyle(ButtonStyle.Secondary),
+    const fieldRow = new ActionRowBuilder()
+        .addComponents(
+            new StringSelectMenuBuilder()
+                .setCustomId('welcome_edit_field')
+                .setPlaceholder('✏️ Choose something to edit')
+                .addOptions(
+                    {
+                        label: 'Title',
+                        description: 'Edit the embed title',
+                        value: 'title',
+                        emoji: '📝'
+                    },
+                    {
+                        label: 'Description',
+                        description: 'Edit the embed description',
+                        value: 'description',
+                        emoji: '📄'
+                    },
+                    {
+                        label: 'Author',
+                        description: 'Edit the embed author',
+                        value: 'author',
+                        emoji: '👤'
+                    },
+                    {
+                        label: 'Color',
+                        description: 'Change the embed color',
+                        value: 'color',
+                        emoji: '🎨'
+                    },
+                    {
+                        label: 'Thumbnail',
+                        description: 'Set or remove the thumbnail',
+                        value: 'thumbnail',
+                        emoji: '🖼️'
+                    },
+                    {
+                        label: 'Image',
+                        description: 'Set or remove the large image',
+                        value: 'image',
+                        emoji: '🌄'
+                    },
+                    {
+                        label: 'Footer',
+                        description: 'Edit the embed footer',
+                        value: 'footer',
+                        emoji: '🦶'
+                    }
+                )
+        );
 
-        new ButtonBuilder()
-            .setCustomId(`welcome_color_${guild.id}`)
-            .setLabel('Set Color')
-            .setEmoji('🎨')
-            .setStyle(ButtonStyle.Secondary)
-    );
+    const buttonRow1 = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId('welcome_preview')
+                .setLabel('Preview')
+                .setEmoji('👀')
+                .setStyle(ButtonStyle.Primary),
 
-    const buttonRow2 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-            .setCustomId(`welcome_preview_${guild.id}`)
-            .setLabel('Preview')
-            .setEmoji('👀')
-            .setStyle(ButtonStyle.Success),
+            new ButtonBuilder()
+                .setCustomId('welcome_timestamp')
+                .setLabel(
+                    config.timestamp
+                        ? 'Remove Timestamp'
+                        : 'Add Timestamp'
+                )
+                .setEmoji('🕐')
+                .setStyle(ButtonStyle.Secondary),
 
-        new ButtonBuilder()
-            .setCustomId(`welcome_toggle_${guild.id}`)
-            .setLabel(config.enabled ? 'Disable' : 'Enable')
-            .setEmoji(config.enabled ? '🔴' : '🟢')
-            .setStyle(config.enabled ? ButtonStyle.Danger : ButtonStyle.Success)
-    );
+            new ButtonBuilder()
+                .setCustomId('welcome_toggle_author')
+                .setLabel(
+                    config.author?.enabled
+                        ? 'Disable Author'
+                        : 'Enable Author'
+                )
+                .setEmoji('👤')
+                .setStyle(ButtonStyle.Secondary),
+
+            new ButtonBuilder()
+                .setCustomId('welcome_toggle_footer')
+                .setLabel(
+                    config.footer?.enabled
+                        ? 'Disable Footer'
+                        : 'Enable Footer'
+                )
+                .setEmoji('🦶')
+                .setStyle(ButtonStyle.Secondary)
+        );
+
+    const buttonRow2 = new ActionRowBuilder()
+        .addComponents(
+            new ButtonBuilder()
+                .setCustomId('welcome_save')
+                .setLabel('Save')
+                .setEmoji('💾')
+                .setStyle(ButtonStyle.Success),
+
+            new ButtonBuilder()
+                .setCustomId('welcome_toggle')
+                .setLabel(
+                    config.enabled
+                        ? 'Disable Welcome'
+                        : 'Enable Welcome'
+                )
+                .setEmoji(
+                    config.enabled
+                        ? '🔴'
+                        : '🟢'
+                )
+                .setStyle(
+                    config.enabled
+                        ? ButtonStyle.Danger
+                        : ButtonStyle.Success
+                ),
+
+            new ButtonBuilder()
+                .setCustomId('welcome_reset')
+                .setLabel('Reset')
+                .setEmoji('🔄')
+                .setStyle(ButtonStyle.Danger)
+        );
 
     return {
-        embeds: [embed],
-        components: [channelRow, buttonRow1, buttonRow2]
+        embeds: [dashboardEmbed(guild)],
+        components: [
+            channelRow,
+            fieldRow,
+            buttonRow1,
+            buttonRow2
+        ]
     };
 }
 
 export default {
     data: new SlashCommandBuilder()
         .setName('welcome')
-        .setDescription('Configure the server welcome message.')
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+        .setDescription('Open the welcome embed builder.')
+        .setDefaultMemberPermissions(
+            PermissionFlagsBits.ManageGuild
+        ),
 
     async execute(interaction) {
-        const dashboard = createDashboard(interaction.guild);
+        if (!interaction.guild) {
+            return interaction.reply({
+                content: '❌ This command can only be used in a server.',
+                ephemeral: true
+            });
+        }
+
+        if (
+            !interaction.memberPermissions?.has(
+                PermissionFlagsBits.ManageGuild
+            )
+        ) {
+            return interaction.reply({
+                content:
+                    '❌ You need **Manage Server** permission to use this.',
+                ephemeral: true
+            });
+        }
 
         await interaction.reply({
-            ...dashboard,
+            ...createWelcomeDashboard(interaction.guild),
             ephemeral: true
-        });
-
-        const message = await interaction.fetchReply();
-
-        const collector = message.createMessageComponentCollector({
-            time: 15 * 60 * 1000
-        });
-
-        collector.on('collect', async component => {
-            if (!component.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
-                return component.reply({
-                    content: '❌ You need **Manage Server** permission to use this.',
-                    ephemeral: true
-                });
-            }
-
-            const guildId = interaction.guild.id;
-            const config = getGuildConfig(guildId);
-
-            // CHANNEL SELECT
-            if (component.customId === `welcome_channel_${guildId}`) {
-                const channelId = component.values[0];
-
-                config.channelId = channelId;
-
-                const allConfig = loadConfig();
-                allConfig[guildId] = config;
-                saveConfig(allConfig);
-
-                await component.update(createDashboard(interaction.guild));
-                return;
-            }
-
-            // EDIT MESSAGE
-            if (component.customId === `welcome_message_${guildId}`) {
-                const modal = new ModalBuilder()
-                    .setCustomId(`welcome_message_modal_${guildId}`)
-                    .setTitle('Edit Welcome Message');
-
-                const titleInput = new TextInputBuilder()
-                    .setCustomId('welcome_title')
-                    .setLabel('Welcome title')
-                    .setStyle(TextInputStyle.Short)
-                    .setRequired(true)
-                    .setMaxLength(256)
-                    .setValue(config.title);
-
-                const messageInput = new TextInputBuilder()
-                    .setCustomId('welcome_text')
-                    .setLabel('Welcome message')
-                    .setStyle(TextInputStyle.Paragraph)
-                    .setRequired(true)
-                    .setMaxLength(4000)
-                    .setValue(config.message);
-
-                modal.addComponents(
-                    new ActionRowBuilder().addComponents(titleInput),
-                    new ActionRowBuilder().addComponents(messageInput)
-                );
-
-                await component.showModal(modal);
-
-                try {
-                    const submitted = await component.awaitModalSubmit({
-                        time: 120000,
-                        filter: i =>
-                            i.customId === `welcome_message_modal_${guildId}` &&
-                            i.user.id === component.user.id
-                    });
-
-                    config.title = submitted.fields.getTextInputValue('welcome_title');
-                    config.message = submitted.fields.getTextInputValue('welcome_text');
-
-                    const allConfig = loadConfig();
-                    allConfig[guildId] = config;
-                    saveConfig(allConfig);
-
-                    await submitted.reply({
-                        content: '✅ Welcome message updated.',
-                        ephemeral: true
-                    });
-
-                    await interaction.editReply(createDashboard(interaction.guild));
-                } catch {
-                    // Modal timed out
-                }
-
-                return;
-            }
-
-            // SET IMAGE
-            if (component.customId === `welcome_image_${guildId}`) {
-                const modal = new ModalBuilder()
-                    .setCustomId(`welcome_image_modal_${guildId}`)
-                    .setTitle('Set Welcome Image');
-
-                const imageInput = new TextInputBuilder()
-                    .setCustomId('welcome_image_url')
-                    .setLabel('Image URL')
-                    .setStyle(TextInputStyle.Short)
-                    .setRequired(false)
-                    .setPlaceholder('https://example.com/image.png')
-                    .setValue(config.image || '');
-
-                modal.addComponents(
-                    new ActionRowBuilder().addComponents(imageInput)
-                );
-
-                await component.showModal(modal);
-
-                try {
-                    const submitted = await component.awaitModalSubmit({
-                        time: 120000,
-                        filter: i =>
-                            i.customId === `welcome_image_modal_${guildId}` &&
-                            i.user.id === component.user.id
-                    });
-
-                    config.image =
-                        submitted.fields.getTextInputValue('welcome_image_url').trim() || null;
-
-                    const allConfig = loadConfig();
-                    allConfig[guildId] = config;
-                    saveConfig(allConfig);
-
-                    await submitted.reply({
-                        content: config.image
-                            ? '✅ Welcome image updated.'
-                            : '✅ Welcome image removed.',
-                        ephemeral: true
-                    });
-
-                    await interaction.editReply(createDashboard(interaction.guild));
-                } catch {
-                    // Modal timed out
-                }
-
-                return;
-            }
-
-            // COLOR
-            if (component.customId === `welcome_color_${guildId}`) {
-                const modal = new ModalBuilder()
-                    .setCustomId(`welcome_color_modal_${guildId}`)
-                    .setTitle('Set Embed Color');
-
-                const colorInput = new TextInputBuilder()
-                    .setCustomId('welcome_color_value')
-                    .setLabel('Hex color')
-                    .setStyle(TextInputStyle.Short)
-                    .setRequired(true)
-                    .setPlaceholder('#191717')
-                    .setValue(config.color);
-
-                modal.addComponents(
-                    new ActionRowBuilder().addComponents(colorInput)
-                );
-
-                await component.showModal(modal);
-
-                try {
-                    const submitted = await component.awaitModalSubmit({
-                        time: 120000,
-                        filter: i =>
-                            i.customId === `welcome_color_modal_${guildId}` &&
-                            i.user.id === component.user.id
-                    });
-
-                    const color = submitted.fields
-                        .getTextInputValue('welcome_color_value')
-                        .trim();
-
-                    if (!/^#[0-9A-Fa-f]{6}$/.test(color)) {
-                        return submitted.reply({
-                            content: '❌ Invalid color. Use a hex color such as `#191717`.',
-                            ephemeral: true
-                        });
-                    }
-
-                    config.color = color;
-
-                    const allConfig = loadConfig();
-                    allConfig[guildId] = config;
-                    saveConfig(allConfig);
-
-                    await submitted.reply({
-                        content: `✅ Welcome color changed to \`${color}\`.`,
-                        ephemeral: true
-                    });
-
-                    await interaction.editReply(createDashboard(interaction.guild));
-                } catch {
-                    // Modal timed out
-                }
-
-                return;
-            }
-
-            // TOGGLE
-            if (component.customId === `welcome_toggle_${guildId}`) {
-                config.enabled = !config.enabled;
-
-                const allConfig = loadConfig();
-                allConfig[guildId] = config;
-                saveConfig(allConfig);
-
-                await component.update(createDashboard(interaction.guild));
-                return;
-            }
-
-            // PREVIEW
-            if (component.customId === `welcome_preview_${guildId}`) {
-                const member = interaction.member;
-
-                const embed = new EmbedBuilder()
-                    .setColor(config.color || '#191717')
-                    .setTitle(replacePlaceholders(config.title, member))
-                    .setDescription(replacePlaceholders(config.message, member));
-
-                if (config.image) {
-                    embed.setThumbnail(config.image);
-                }
-
-                embed.setFooter({
-                    text: `You're the ${interaction.guild.memberCount} member in the server!`
-                });
-
-                await component.reply({
-                    embeds: [embed],
-                    ephemeral: true
-                });
-
-                return;
-            }
         });
     }
 };
