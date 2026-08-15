@@ -57,6 +57,30 @@ export default {
       try {
         InteractionHelper.patchInteractionResponses(interaction);
         ResponseCoordinator.attach(interaction);
+        // ==========================================
+// WELCOME BUILDER - DIRECT HANDLER
+// ==========================================
+
+if (
+    interaction.isChatInputCommand() &&
+    interaction.commandName === 'welcome'
+) {
+    try {
+        await interaction.reply({
+            content: '✅ `/welcome` interaction received.',
+            flags: MessageFlags.Ephemeral
+        });
+
+        return;
+    } catch (error) {
+        logger.error('Welcome direct handler error:', {
+            error: error.message,
+            stack: error.stack
+        });
+
+        return;
+    }
+}
 
         if (interaction.isChatInputCommand()) {
           try {
