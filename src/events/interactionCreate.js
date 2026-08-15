@@ -55,12 +55,6 @@ export default {
 
     return runWithTraceContext(interactionTraceContext, async () => {
       try {
-        const welcomeHandled = await handleWelcomeInteraction(interaction);
-
-if (welcomeHandled) {
-  return;
-}
-        import { handleWelcomeInteraction } from '../utils/welcomeInteractionHandler.js';
         InteractionHelper.patchInteractionResponses(interaction);
         ResponseCoordinator.attach(interaction);
 
