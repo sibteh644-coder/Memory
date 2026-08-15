@@ -17,36 +17,42 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const dataDir = path.join(__dirname, '../data');
-const dataFile = path.join(dataDir, 'welcome.json');
+const DATA_DIR = path.join(__dirname, '../data');
+const DATA_FILE = path.join(DATA_DIR, 'welcome.json');
 
-function ensureDataFile() {
-    if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
+function ensureFile() {
+    if (!fs.existsSync(DATA_DIR)) {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
     }
 
-    if (!fs.existsSync(dataFile)) {
-        fs.writeFileSync(dataFile, '{}');
+    if (!fs.existsSync(DATA_FILE)) {
+        fs.writeFileSync(DATA_FILE, '{}');
     }
 }
 
-export function loadWelcomeData() {
-    ensureDataFile();
+function loadData() {
+    ensureFile();
 
     try {
-        return JSON.parse(fs.readFileSync(dataFile, 'utf8'));
+        return JSON.parse(
+            fs.readFileSync(DATA_FILE, 'utf8')
+        );
     } catch {
         return {};
     }
 }
 
-export function saveWelcomeData(data) {
-    ensureDataFile();
-    fs.writeFileSync(dataFile, JSON.stringify(data, null, 2));
+function saveData(data) {
+    ensureFile();
+
+    fs.writeFileSync(
+        DATA_FILE,
+        JSON.stringify(data, null, 2)
+    );
 }
 
 export function getWelcomeConfig(guildId) {
-    const data = loadWelcomeData();
+    const data = loadData();
 
     if (!data[guildId]) {
         data[guildId] = {
@@ -54,6 +60,7 @@ export function getWelcomeConfig(guildId) {
             channelId: null,
 
             title: 'Welcome {user}!',
+
             description:
                 'Hope you enjoy your stay in **{server}**!\n' +
                 'Please chat in {channel}',
@@ -71,36 +78,56 @@ export function getWelcomeConfig(guildId) {
 
             footer: {
                 enabled: true,
-                text: "You're the {count} member in the server!",
+                text:
+                    "You're the {count} member in the server!",
                 iconURL: ''
             },
 
             timestamp: false
         };
 
-        saveWelcomeData(data);
+        saveData(data);
     }
 
     return data[guildId];
 }
 
 export function updateWelcomeConfig(guildId, config) {
-    const data = loadWelcomeData();
+    const data = loadData();
+
     data[guildId] = config;
-    saveWelcomeData(data);
+
+    saveData(data);
 }
 
-export function replacePlaceholders(text, member, config) {
+function replacePlaceholders(text, member, config) {
     if (!text) return '';
 
-    const channel = member.guild.channels.cache.get(config.channelId);
+    const channel = member.guild.channels.cache.get(
+        config.channelId
+    );
 
     return text
-        .replaceAll('{user}', `<@${member.id}>`)
-        .replaceAll('{username}', member.user.username)
-        .replaceAll('{server}', member.guild.name)
-        .replaceAll('{channel}', channel ? channel.toString() : '#channel')
-        .replaceAll('{count}', member.guild.memberCount.toString());
+        .replaceAll(
+            '{user}',
+            `<@${member.id}>`
+        )
+        .replaceAll(
+            '{username}',
+            member.user.username
+        )
+        .replaceAll(
+            '{server}',
+            member.guild.name
+        )
+        .replaceAll(
+            '{channel}',
+            channel ? channel.toString() : '#channel'
+        )
+        .replaceAll(
+            '{count}',
+            member.guild.memberCount.toString()
+        );
 }
 
 export function buildWelcomeEmbed(member, config) {
@@ -109,13 +136,21 @@ export function buildWelcomeEmbed(member, config) {
 
     if (config.title) {
         embed.setTitle(
-            replacePlaceholders(config.title, member, config)
+            replacePlaceholders(
+                config.title,
+                member,
+                config
+            )
         );
     }
 
     if (config.description) {
         embed.setDescription(
-            replacePlaceholders(config.description, member, config)
+            replacePlaceholders(
+                config.description,
+                member,
+                config
+            )
         );
     }
 
@@ -139,15 +174,11 @@ export function buildWelcomeEmbed(member, config) {
     }
 
     if (config.thumbnail) {
-        try {
-            embed.setThumbnail(config.thumbnail);
-        } catch {}
+        embed.setThumbnail(config.thumbnail);
     }
 
     if (config.image) {
-        try {
-            embed.setImage(config.image);
-        } catch {}
+        embed.setImage(config.image);
     }
 
     if (
@@ -176,26 +207,20 @@ export function buildWelcomeEmbed(member, config) {
     return embed;
 }
 
-function dashboardEmbed(guild) {
+function getDashboardEmbed(guild) {
     const config = getWelcomeConfig(guild.id);
 
     const channel = config.channelId
-        ? guild.channels.cache.get(config.channelId)
+        ? guild.channels.cache.get(
+              config.channelId
+          )
         : null;
-
-    const author = config.author?.enabled
-        ? config.author.name || 'Not configured'
-        : 'Disabled';
-
-    const footer = config.footer?.enabled
-        ? config.footer.text || 'Not configured'
-        : 'Disabled';
 
     return new EmbedBuilder()
         .setColor(config.color || '#191717')
         .setTitle('🛠️ Welcome Embed Builder')
         .setDescription(
-            'Configure your server welcome embed using the controls below.'
+            'Build your entire welcome embed using the controls below.'
         )
         .addFields(
             {
@@ -214,24 +239,28 @@ function dashboardEmbed(guild) {
             },
             {
                 name: 'Color',
-                value: `\`${config.color || '#191717'}\``,
+                value: `\`${config.color}\``,
                 inline: true
             },
             {
                 name: '📝 Title',
-                value: config.title
-                    ? `\`\`\`\n${config.title.slice(0, 1000)}\n\`\`\``
-                    : 'Not set'
+                value:
+                    config.title?.slice(0, 1024) ||
+                    'Not set'
             },
             {
                 name: '📄 Description',
-                value: config.description
-                    ? `\`\`\`\n${config.description.slice(0, 1000)}\n\`\`\``
-                    : 'Not set'
+                value:
+                    config.description?.slice(0, 1024) ||
+                    'Not set'
             },
             {
                 name: '👤 Author',
-                value: author,
+                value:
+                    config.author?.enabled &&
+                    config.author.name
+                        ? config.author.name
+                        : 'Disabled',
                 inline: true
             },
             {
@@ -250,8 +279,12 @@ function dashboardEmbed(guild) {
             },
             {
                 name: '🦶 Footer',
-                value: footer,
-                inline: true
+                value:
+                    config.footer?.enabled &&
+                    config.footer.text
+                        ? config.footer.text
+                        : 'Disabled',
+                inline: false
             },
             {
                 name: '🕐 Timestamp',
@@ -262,122 +295,163 @@ function dashboardEmbed(guild) {
             }
         )
         .setFooter({
-            text: 'Changes are saved automatically.'
+            text:
+                'Use the menu to edit the embed.'
         });
 }
 
 export function createWelcomeDashboard(guild) {
-    const config = getWelcomeConfig(guild.id);
+    const config = getWelcomeConfig(
+        guild.id
+    );
 
-    const channelRow = new ActionRowBuilder()
-        .addComponents(
+    const channelRow =
+        new ActionRowBuilder().addComponents(
             new ChannelSelectMenuBuilder()
-                .setCustomId('welcome_select_channel')
-                .setPlaceholder('📢 Select welcome channel')
-                .setChannelTypes(ChannelType.GuildText)
-                .setMaxValues(1)
+                .setCustomId(
+                    'welcome_select_channel'
+                )
+                .setPlaceholder(
+                    '📢 Select welcome channel'
+                )
+                .setChannelTypes(
+                    ChannelType.GuildText
+                )
         );
 
-    const fieldRow = new ActionRowBuilder()
-        .addComponents(
+    const editRow =
+        new ActionRowBuilder().addComponents(
             new StringSelectMenuBuilder()
-                .setCustomId('welcome_edit_field')
-                .setPlaceholder('✏️ Choose something to edit')
+                .setCustomId(
+                    'welcome_edit_field'
+                )
+                .setPlaceholder(
+                    '✏️ Choose something to edit'
+                )
                 .addOptions(
                     {
                         label: 'Title',
-                        description: 'Edit the embed title',
+                        description:
+                            'Edit the embed title',
                         value: 'title',
                         emoji: '📝'
                     },
                     {
                         label: 'Description',
-                        description: 'Edit the embed description',
+                        description:
+                            'Edit the embed description',
                         value: 'description',
                         emoji: '📄'
                     },
                     {
                         label: 'Author',
-                        description: 'Edit the embed author',
+                        description:
+                            'Edit the embed author',
                         value: 'author',
                         emoji: '👤'
                     },
                     {
                         label: 'Color',
-                        description: 'Change the embed color',
+                        description:
+                            'Change the embed color',
                         value: 'color',
                         emoji: '🎨'
                     },
                     {
                         label: 'Thumbnail',
-                        description: 'Set or remove the thumbnail',
+                        description:
+                            'Set the thumbnail',
                         value: 'thumbnail',
                         emoji: '🖼️'
                     },
                     {
                         label: 'Image',
-                        description: 'Set or remove the large image',
+                        description:
+                            'Set the large image',
                         value: 'image',
                         emoji: '🌄'
                     },
                     {
                         label: 'Footer',
-                        description: 'Edit the embed footer',
+                        description:
+                            'Edit the footer',
                         value: 'footer',
                         emoji: '🦶'
                     }
                 )
         );
 
-    const buttonRow1 = new ActionRowBuilder()
-        .addComponents(
+    const buttons1 =
+        new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-                .setCustomId('welcome_preview')
+                .setCustomId(
+                    'welcome_preview'
+                )
                 .setLabel('Preview')
                 .setEmoji('👀')
-                .setStyle(ButtonStyle.Primary),
+                .setStyle(
+                    ButtonStyle.Primary
+                ),
 
             new ButtonBuilder()
-                .setCustomId('welcome_timestamp')
+                .setCustomId(
+                    'welcome_timestamp'
+                )
                 .setLabel(
                     config.timestamp
                         ? 'Remove Timestamp'
                         : 'Add Timestamp'
                 )
                 .setEmoji('🕐')
-                .setStyle(ButtonStyle.Secondary),
+                .setStyle(
+                    ButtonStyle.Secondary
+                ),
 
             new ButtonBuilder()
-                .setCustomId('welcome_toggle_author')
+                .setCustomId(
+                    'welcome_toggle_author'
+                )
                 .setLabel(
                     config.author?.enabled
                         ? 'Disable Author'
                         : 'Enable Author'
                 )
                 .setEmoji('👤')
-                .setStyle(ButtonStyle.Secondary),
+                .setStyle(
+                    ButtonStyle.Secondary
+                ),
 
             new ButtonBuilder()
-                .setCustomId('welcome_toggle_footer')
+                .setCustomId(
+                    'welcome_toggle_footer'
+                )
                 .setLabel(
                     config.footer?.enabled
                         ? 'Disable Footer'
                         : 'Enable Footer'
                 )
                 .setEmoji('🦶')
-                .setStyle(ButtonStyle.Secondary)
+                .setStyle(
+                    ButtonStyle.Secondary
+                )
         );
 
-    const buttonRow2 = new ActionRowBuilder()
-        .addComponents(
+    const buttons2 =
+        new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-                .setCustomId('welcome_save')
+                .setCustomId(
+                    'welcome_save'
+                )
                 .setLabel('Save')
                 .setEmoji('💾')
-                .setStyle(ButtonStyle.Success),
+                .setStyle(
+                    ButtonStyle.Success
+                ),
 
             new ButtonBuilder()
-                .setCustomId('welcome_toggle')
+                .setCustomId(
+                    'welcome_toggle'
+                )
                 .setLabel(
                     config.enabled
                         ? 'Disable Welcome'
@@ -395,54 +469,95 @@ export function createWelcomeDashboard(guild) {
                 ),
 
             new ButtonBuilder()
-                .setCustomId('welcome_reset')
+                .setCustomId(
+                    'welcome_reset'
+                )
                 .setLabel('Reset')
                 .setEmoji('🔄')
-                .setStyle(ButtonStyle.Danger)
+                .setStyle(
+                    ButtonStyle.Danger
+                )
         );
 
     return {
-        embeds: [dashboardEmbed(guild)],
+        embeds: [
+            getDashboardEmbed(guild)
+        ],
+
         components: [
             channelRow,
-            fieldRow,
-            buttonRow1,
-            buttonRow2
+            editRow,
+            buttons1,
+            buttons2
         ]
     };
 }
 
 export default {
+    name: 'welcome',
+
+    // Use the same category your existing
+    // community commands use.
+    category: 'Community',
+
     data: new SlashCommandBuilder()
         .setName('welcome')
-        .setDescription('Open the welcome embed builder.')
+        .setDescription(
+            'Open the welcome embed builder.'
+        )
         .setDefaultMemberPermissions(
             PermissionFlagsBits.ManageGuild
         ),
 
-    async execute(interaction) {
-        if (!interaction.guild) {
-            return interaction.reply({
-                content: '❌ This command can only be used in a server.',
+    async execute(
+        interaction,
+        guildConfig,
+        client
+    ) {
+        try {
+            if (!interaction.guild) {
+                return interaction.reply({
+                    content:
+                        '❌ This command can only be used in a server.',
+                    ephemeral: true
+                });
+            }
+
+            if (
+                !interaction.memberPermissions?.has(
+                    PermissionFlagsBits.ManageGuild
+                )
+            ) {
+                return interaction.reply({
+                    content:
+                        '❌ You need **Manage Server** permission to use this.',
+                    ephemeral: true
+                });
+            }
+
+            await interaction.reply({
+                ...createWelcomeDashboard(
+                    interaction.guild
+                ),
                 ephemeral: true
             });
-        }
 
-        if (
-            !interaction.memberPermissions?.has(
-                PermissionFlagsBits.ManageGuild
-            )
-        ) {
-            return interaction.reply({
-                content:
-                    '❌ You need **Manage Server** permission to use this.',
-                ephemeral: true
-            });
-        }
+        } catch (error) {
+            console.error(
+                'WELCOME COMMAND ERROR:',
+                error
+            );
 
-        await interaction.reply({
-            ...createWelcomeDashboard(interaction.guild),
-            ephemeral: true
-        });
+            if (
+                !interaction.replied &&
+                !interaction.deferred
+            ) {
+                await interaction.reply({
+                    content:
+                        '❌ Failed to open the Welcome Embed Builder.',
+                    ephemeral: true
+                }).catch(() => {});
+            }
+        }
     }
 };
