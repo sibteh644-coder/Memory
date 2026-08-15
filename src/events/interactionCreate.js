@@ -58,7 +58,7 @@ export default {
         InteractionHelper.patchInteractionResponses(interaction);
         ResponseCoordinator.attach(interaction);
         // ==========================================
-// WELCOME BUILDER - DIRECT HANDLER
+// WELCOME BUILDER
 // ==========================================
 
 if (
@@ -67,21 +67,63 @@ if (
 ) {
     try {
         await interaction.reply({
-            content: '✅ `/welcome` interaction received.',
+            ...getWelcomeDashboard(
+                interaction.guild
+            ),
             flags: MessageFlags.Ephemeral
         });
 
         return;
     } catch (error) {
-        logger.error('Welcome direct handler error:', {
-            error: error.message,
-            stack: error.stack
-        });
+        logger.error(
+            'Welcome builder command error:',
+            {
+                error: error.message,
+                stack: error.stack
+            }
+        );
 
         return;
     }
 }
 
+if (
+    interaction.customId?.startsWith(
+        'welcome_'
+    )
+) {
+    try {
+        const handled =
+            await handleWelcome(interaction);
+
+        if (handled) {
+            return;
+        }
+    } catch (error) {
+        logger.error(
+            'Welcome builder interaction error:',
+            {
+                error: error.message,
+                stack: error.stack,
+                customId:
+                    interaction.customId
+            }
+        );
+
+        if (
+            !interaction.replied &&
+            !interaction.deferred
+        ) {
+            await interaction.reply({
+                content:
+                    '❌ Something went wrong with the Welcome Builder.',
+                flags: MessageFlags.Ephemeral
+            }).catch(() => {});
+        }
+
+        return;
+    }
+}
         if (interaction.isChatInputCommand()) {
           try {
             logger.info(`Command executed: /${interaction.commandName} by ${interaction.user.tag}`, {
