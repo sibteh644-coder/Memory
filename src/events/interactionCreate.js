@@ -61,11 +61,132 @@ export default {
     interaction.isChatInputCommand() &&
     interaction.commandName === 'welcome'
 ) {
-    await interaction.reply({
-        content: '✅ WELCOME TEST WORKS',
-        flags: MessageFlags.Ephemeral
-    });
+    const {
+    EmbedBuilder,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    StringSelectMenuBuilder
+} = await import('discord.js');
 
+const embed = new EmbedBuilder()
+    .setColor('#191717')
+    .setTitle('🛠️ Welcome Embed Builder')
+    .setDescription(
+        'Build your welcome message using the options below.'
+    )
+    .addFields(
+        {
+            name: '📝 Title',
+            value: 'Welcome {user}!',
+            inline: false
+        },
+        {
+            name: '📄 Description',
+            value:
+                'Hope you enjoy your stay in **{server}**!',
+            inline: false
+        },
+        {
+            name: '🎨 Color',
+            value: '`#191717`',
+            inline: true
+        },
+        {
+            name: '📢 Channel',
+            value: 'Not selected',
+            inline: true
+        },
+        {
+            name: '🕐 Timestamp',
+            value: 'Disabled',
+            inline: true
+        }
+    );
+
+const editMenu = new StringSelectMenuBuilder()
+    .setCustomId('welcome_edit')
+    .setPlaceholder('✏️ Choose what you want to edit')
+    .addOptions(
+        {
+            label: 'Title',
+            description: 'Edit the embed title',
+            value: 'title',
+            emoji: '📝'
+        },
+        {
+            label: 'Description',
+            description: 'Edit the embed description',
+            value: 'description',
+            emoji: '📄'
+        },
+        {
+            label: 'Color',
+            description: 'Change the embed color',
+            value: 'color',
+            emoji: '🎨'
+        },
+        {
+            label: 'Author',
+            description: 'Edit the embed author',
+            value: 'author',
+            emoji: '👤'
+        },
+        {
+            label: 'Thumbnail',
+            description: 'Set the thumbnail',
+            value: 'thumbnail',
+            emoji: '🖼️'
+        },
+        {
+            label: 'Image',
+            description: 'Set the embed image',
+            value: 'image',
+            emoji: '🌄'
+        },
+        {
+            label: 'Footer',
+            description: 'Edit the footer',
+            value: 'footer',
+            emoji: '🦶'
+        }
+    );
+
+const menuRow = new ActionRowBuilder()
+    .addComponents(editMenu);
+
+const buttons = new ActionRowBuilder()
+    .addComponents(
+        new ButtonBuilder()
+            .setCustomId('welcome_preview')
+            .setLabel('Preview')
+            .setEmoji('👀')
+            .setStyle(ButtonStyle.Primary),
+
+        new ButtonBuilder()
+            .setCustomId('welcome_save')
+            .setLabel('Save')
+            .setEmoji('💾')
+            .setStyle(ButtonStyle.Success),
+
+        new ButtonBuilder()
+            .setCustomId('welcome_enable')
+            .setLabel('Enable')
+            .setEmoji('🟢')
+            .setStyle(ButtonStyle.Success),
+
+        new ButtonBuilder()
+            .setCustomId('welcome_reset')
+            .setLabel('Reset')
+            .setEmoji('🔄')
+            .setStyle(ButtonStyle.Danger)
+    );
+
+await interaction.reply({
+    embeds: [embed],
+    components: [menuRow, buttons],
+    flags: MessageFlags.Ephemeral
+});
     return;
 }
         if (interaction.isChatInputCommand()) {
