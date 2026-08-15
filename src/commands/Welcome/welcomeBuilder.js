@@ -12,20 +12,11 @@ export default {
         ),
 
     async execute(interaction) {
-        console.log('[WELCOME] execute() reached');
-
-        try {
-            await interaction.reply({
-                content: '✅ Welcome command is working!',
-                flags: 64
-            });
-
-            console.log('[WELCOME] reply sent');
-        } catch (error) {
-            console.error(
-                '[WELCOME] EXECUTE ERROR:',
-                error
-            );
-        }
+        // The command is handled directly in interactionCreate.js.
+        // This is only here so the command is registered correctly.
+        await interaction.reply({
+            content: 'Please wait...',
+            flags: 64
+        });
     }
 };
