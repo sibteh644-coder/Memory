@@ -60,9 +60,6 @@ export default {
         if (
     interaction.isChatInputCommand() &&
     interaction.commandName === 'welcome'
-if (
-    interaction.isChatInputCommand() &&
-    interaction.commandName === 'welcome'
 ) {
     await interaction.reply({
         content: '✅ WELCOME TEST WORKS',
