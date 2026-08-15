@@ -6,19 +6,26 @@ import {
 export default {
     data: new SlashCommandBuilder()
         .setName('welcome')
-        .setDescription('Open the welcome builder')
+        .setDescription('Open the welcome embed builder')
         .setDefaultMemberPermissions(
             PermissionFlagsBits.ManageGuild
         ),
 
     async execute(interaction) {
+        console.log('[WELCOME] execute() reached');
+
         try {
             await interaction.reply({
-                content: '✅ `/welcome` is working!',
-                ephemeral: true
+                content: '✅ Welcome command is working!',
+                flags: 64
             });
+
+            console.log('[WELCOME] reply sent');
         } catch (error) {
-            console.error('Welcome command error:', error);
+            console.error(
+                '[WELCOME] EXECUTE ERROR:',
+                error
+            );
         }
     }
 };
