@@ -34,7 +34,7 @@ const DEFAULT_WELCOME = {
 
   title: 'Welcome {user}!',
   description:
-    'Hope you enjoy your stay in **{server}**!\nPlease chat in <#CHANNEL_ID>.',
+    'Hope you enjoy your stay in **{server}**!',
 
   color: '#191717',
 
@@ -59,8 +59,10 @@ const DEFAULT_WELCOME = {
 
 async function getConfig(client, guildId) {
   try {
-    const config =
-      await getWelcomeConfig(client, guildId);
+    const config = await getWelcomeConfig(
+      client,
+      guildId
+    );
 
     return {
       ...DEFAULT_WELCOME,
@@ -365,7 +367,8 @@ function buildDashboard(interaction, config) {
                   config.footerText ||
                   'Enabled'
                 )
-              : 'Disabled'
+              : 'Disabled',
+          inline: true
         },
         {
           name: '🕐 Timestamp',
@@ -515,10 +518,22 @@ function buildDashboard(interaction, config) {
       );
 
 
-  // ENABLE / RESET
+  // SAVE / ENABLE / RESET
   const row4 =
     new ActionRowBuilder()
       .addComponents(
+
+        new ButtonBuilder()
+          .setCustomId(
+            'welcome_save'
+          )
+          .setLabel(
+            'Save'
+          )
+          .setEmoji('💾')
+          .setStyle(
+            ButtonStyle.Success
+          ),
 
         new ButtonBuilder()
           .setCustomId(
@@ -643,6 +658,7 @@ export default {
     interaction,
     client
   ) {
+
     try {
 
       // ========================================================
@@ -760,7 +776,8 @@ export default {
                 {
                   id: 'title',
                   label: 'Title',
-                  value: config.title,
+                  value:
+                    config.title,
                   maxLength: 256
                 }
               ]
@@ -781,7 +798,8 @@ export default {
               [
                 {
                   id: 'description',
-                  label: 'Description',
+                  label:
+                    'Description',
                   value:
                     config.description,
                   paragraph: true,
@@ -976,6 +994,40 @@ export default {
             content:
               '👀 **Welcome Message Preview**',
             embeds: [embed],
+            flags:
+              MessageFlags.Ephemeral
+          });
+
+          return;
+        }
+
+
+        // ------------------------------------------------------
+        // SAVE
+        // ------------------------------------------------------
+
+        if (
+          interaction.customId ===
+          'welcome_save'
+        ) {
+
+          const config =
+            await getConfig(
+              client,
+              guildId
+            );
+
+
+          await saveWelcomeConfig(
+            client,
+            guildId,
+            config
+          );
+
+
+          await interaction.reply({
+            content:
+              '💾 **Welcome embed saved successfully!**',
             flags:
               MessageFlags.Ephemeral
           });
@@ -1546,6 +1598,10 @@ export default {
 
       try {
 
+        const errorMessage =
+          error?.message ||
+          'Unknown error';
+
         if (
           interaction.replied ||
           interaction.deferred
@@ -1553,7 +1609,7 @@ export default {
 
           await interaction.followUp({
             content:
-              `❌ Welcome Builder error: \`${error.message}\``,
+              `❌ Welcome Builder error: \`${errorMessage}\``,
             flags:
               MessageFlags.Ephemeral
           });
@@ -1562,11 +1618,10 @@ export default {
 
           await interaction.reply({
             content:
-              `❌ Welcome Builder error: \`${error.message}\``,
+              `❌ Welcome Builder error: \`${errorMessage}\``,
             flags:
               MessageFlags.Ephemeral
           });
-
         }
 
       } catch {
