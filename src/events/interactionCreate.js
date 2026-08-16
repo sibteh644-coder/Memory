@@ -175,15 +175,18 @@ function validUrl(value) {
 function buildWelcomeEmbed(interaction, config) {
   const embed = new EmbedBuilder();
 
-  const color =
-    typeof config.color === 'string' &&
-    /^#[0-9A-Fa-f]{6}$/.test(
-      config.color.trim()
-    )
-      ? config.color.trim()
-      : '#191717';
+  const colorText =
+  typeof config.color === 'string' &&
+  /^#[0-9A-Fa-f]{6}$/.test(config.color.trim())
+    ? config.color.trim()
+    : '#191717';
 
-  embed.setColor(color);
+const colorNumber = parseInt(
+  colorText.replace('#', ''),
+  16
+);
+
+embed.setColor(colorNumber);
 
 
   // TITLE
