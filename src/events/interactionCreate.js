@@ -20,11 +20,14 @@ import {
   getBotMessage,
   isBotOwner,
   isCommandCategoryEnabled,
-  isMaintenanceMode,
+  isMaintenanceMode
 } from '../config/bot.js';
 
 import botConfig from '../config/bot.js';
-import { handleApplicationModal } from '../commands/Community/apply.js';
+
+import {
+  handleApplicationModal
+} from '../commands/Community/apply.js';
 
 import {
   handleInteractionError,
@@ -69,6 +72,11 @@ import {
   enforceDefaultCommandPermissions
 } from '../utils/permissionGuard.js';
 
+import {
+  getWelcomeConfig,
+  saveWelcomeConfig
+} from '../utils/database.js';
+
 
 const COMMAND_ERROR_SUBTYPES = {
   warn: 'warn_failed',
@@ -83,285 +91,374 @@ const COMMAND_ERROR_SUBTYPES = {
   gcreate: 'giveaway_failed',
   gend: 'giveaway_failed',
   gdelete: 'giveaway_failed',
-  greroll: 'giveaway_failed',
+  greroll: 'giveaway_failed'
 };
-
-
-function withTraceContext(context = {}, traceContext = {}) {
-  return {
-    traceId: traceContext.traceId,
-    guildId: context.guildId || traceContext.guildId,
-    userId: context.userId || traceContext.userId,
-    command: context.commandName || traceContext.command,
-    ...context
-  };
-}
 
 
 /* =========================================================
    WELCOME BUILDER
 ========================================================= */
 
-const welcomeConfigs = new Map();
+function defaultWelcomeConfig() {
+  return {
+    enabled: false,
+    channelId: null,
 
+    welcomeMessage:
+      'Welcome {user} to {server}!',
 
-function getWelcomeConfig(guildId) {
-  if (!welcomeConfigs.has(guildId)) {
-    welcomeConfigs.set(guildId, {
-      enabled: false,
-      channelId: null,
+    welcomePing: false,
 
-      title: 'Welcome {user}!',
-
+    welcomeEmbed: {
+      title: '🎉 Welcome!',
       description:
-        'Hope you enjoy your stay in **{server}**!',
-
+        'Welcome {user} to {server}!',
       color: '#191717',
+      footer:
+        'Welcome to {server}!',
+      image: {
+        url: null
+      }
+    },
 
-      authorEnabled: false,
-      authorName: '',
-      authorIcon: '',
-
-      thumbnail: '',
-      image: '',
-
-      footerEnabled: true,
-      footerText: "You're member #{count}!",
-      footerIcon: '',
-
-      timestamp: false
-    });
-  }
-
-  return welcomeConfigs.get(guildId);
+    welcomeImage: null
+  };
 }
 
 
-function replaceWelcomeVariables(text, interaction) {
+const temporaryWelcomeConfigs =
+  new Map();
+
+
+function getBuilderConfig(guildId) {
+  if (
+    !temporaryWelcomeConfigs.has(
+      guildId
+    )
+  ) {
+    temporaryWelcomeConfigs.set(
+      guildId,
+      defaultWelcomeConfig()
+    );
+  }
+
+  return temporaryWelcomeConfigs.get(
+    guildId
+  );
+}
+
+
+function normalizeWelcomeConfig(
+  config
+) {
+  const defaults =
+    defaultWelcomeConfig();
+
+  return {
+    ...defaults,
+    ...(config || {}),
+
+    welcomeEmbed: {
+      ...defaults.welcomeEmbed,
+      ...(config?.welcomeEmbed || {})
+    }
+  };
+}
+
+
+async function loadWelcomeBuilderConfig(
+  client,
+  guildId
+) {
+  try {
+    const databaseConfig =
+      await getWelcomeConfig(
+        client,
+        guildId
+      );
+
+    const config =
+      normalizeWelcomeConfig(
+        databaseConfig
+      );
+
+    temporaryWelcomeConfigs.set(
+      guildId,
+      config
+    );
+
+    return config;
+
+  } catch (error) {
+    logger.error(
+      'Failed to load welcome configuration:',
+      {
+        guildId,
+        error
+      }
+    );
+
+    return getBuilderConfig(
+      guildId
+    );
+  }
+}
+
+
+function replaceWelcomeVariables(
+  text,
+  interaction
+) {
   if (!text) {
     return '';
   }
 
-  const user = interaction.user;
-  const guild = interaction.guild;
+  const user =
+    interaction.user;
+
+  const guild =
+    interaction.guild;
 
   return String(text)
     .replaceAll(
       '{user}',
-      user?.toString() || 'User'
+      user?.toString() ||
+        'User'
     )
     .replaceAll(
       '{user.mention}',
-      user?.toString() || 'User'
+      user?.toString() ||
+        'User'
     )
     .replaceAll(
       '{user.username}',
-      user?.username || 'User'
+      user?.username ||
+        'User'
     )
     .replaceAll(
       '{username}',
-      user?.username || 'User'
+      user?.username ||
+        'User'
     )
     .replaceAll(
       '{user.id}',
-      user?.id || ''
+      user?.id ||
+        ''
     )
     .replaceAll(
       '{server}',
-      guild?.name || 'Server'
+      guild?.name ||
+        'Server'
     )
     .replaceAll(
       '{server.name}',
-      guild?.name || 'Server'
+      guild?.name ||
+        'Server'
     )
     .replaceAll(
       '{guild.name}',
-      guild?.name || 'Server'
+      guild?.name ||
+        'Server'
     )
     .replaceAll(
       '{guild.id}',
-      guild?.id || ''
+      guild?.id ||
+        ''
     )
     .replaceAll(
       '{memberCount}',
-      String(guild?.memberCount || 0)
+      String(
+        guild?.memberCount ||
+          0
+      )
     )
     .replaceAll(
       '{membercount}',
-      String(guild?.memberCount || 0)
+      String(
+        guild?.memberCount ||
+          0
+      )
     )
     .replaceAll(
       '{count}',
-      String(guild?.memberCount || 0)
+      String(
+        guild?.memberCount ||
+          0
+      )
     );
 }
 
 
-function validUrl(value) {
-  if (!value) {
-    return false;
-  }
-
-  try {
-    const url = new URL(value);
-
-    return (
-      url.protocol === 'http:' ||
-      url.protocol === 'https:'
-    );
-  } catch {
-    return false;
-  }
-}
-
-
-function getWelcomeColor(value) {
+function parseWelcomeColor(
+  value
+) {
   if (
-    typeof value === 'string' &&
-    /^#[0-9A-Fa-f]{6}$/.test(
-      value.trim()
-    )
+    typeof value === 'number'
   ) {
-    return parseInt(
-      value.trim().slice(1),
-      16
-    );
+    return value;
+  }
+
+  if (
+    typeof value === 'string'
+  ) {
+    const trimmed =
+      value.trim();
+
+    if (
+      /^#[0-9A-Fa-f]{6}$/.test(
+        trimmed
+      )
+    ) {
+      return parseInt(
+        trimmed.slice(1),
+        16
+      );
+    }
   }
 
   return 0x191717;
 }
 
 
-function createWelcomeEmbed(interaction) {
-  const config =
-    getWelcomeConfig(
-      interaction.guildId
+function isValidUrl(
+  value
+) {
+  if (!value) {
+    return false;
+  }
+
+  try {
+    const url =
+      new URL(value);
+
+    return (
+      url.protocol ===
+        'http:' ||
+      url.protocol ===
+        'https:'
+    );
+
+  } catch {
+    return false;
+  }
+}
+
+
+function getWelcomeImageUrl(
+  config
+) {
+  if (
+    typeof config.welcomeImage ===
+      'string' &&
+    config.welcomeImage
+  ) {
+    return config.welcomeImage;
+  }
+
+  if (
+    config.welcomeEmbed?.image
+      ?.url
+  ) {
+    return config.welcomeEmbed
+      .image.url;
+  }
+
+  return null;
+}
+
+
+function createWelcomeEmbed(
+  interaction,
+  config
+) {
+  config =
+    normalizeWelcomeConfig(
+      config
     );
 
   const embed =
-    new EmbedBuilder();
-
-  /*
-   * IMPORTANT:
-   * Discord.js requires a number for EmbedBuilder#setColor.
-   * This prevents the "Invalid number value" error.
-   */
-
-  embed.setColor(
-    getWelcomeColor(
-      config.color
-    )
-  );
+    new EmbedBuilder()
+      .setColor(
+        parseWelcomeColor(
+          config.welcomeEmbed
+            ?.color
+        )
+      );
 
 
-  if (
-    config.title &&
-    config.title.trim()
-  ) {
+  const title =
+    replaceWelcomeVariables(
+      config.welcomeEmbed
+        ?.title ||
+        '🎉 Welcome!',
+      interaction
+    );
+
+  if (title) {
     embed.setTitle(
-      replaceWelcomeVariables(
-        config.title,
-        interaction
-      ).slice(0, 256)
+      title.slice(0, 256)
     );
   }
 
 
-  if (
-    config.description &&
-    config.description.trim()
-  ) {
+  const description =
+    replaceWelcomeVariables(
+      config.welcomeEmbed
+        ?.description ||
+        config.welcomeMessage ||
+        'Welcome {user} to {server}!',
+      interaction
+    );
+
+  if (description) {
     embed.setDescription(
-      replaceWelcomeVariables(
-        config.description,
-        interaction
-      ).slice(0, 4096)
+      description.slice(0, 4096)
     );
   }
 
 
+  const image =
+    getWelcomeImageUrl(
+      config
+    );
+
   if (
-    config.authorEnabled &&
-    config.authorName &&
-    config.authorName.trim()
+    image &&
+    isValidUrl(image)
   ) {
-    const author = {
-      name:
-        replaceWelcomeVariables(
-          config.authorName,
-          interaction
-        ).slice(0, 256)
-    };
-
-    if (
-      validUrl(
-        config.authorIcon
-      )
-    ) {
-      author.iconURL =
-        config.authorIcon.trim();
-    }
-
-    embed.setAuthor(
-      author
+    embed.setImage(
+      image
     );
   }
 
 
   if (
-    validUrl(
-      config.thumbnail
+    config.welcomeEmbed
+      ?.thumbnail?.url &&
+    isValidUrl(
+      config.welcomeEmbed
+        .thumbnail.url
     )
   ) {
     embed.setThumbnail(
-      config.thumbnail.trim()
+      config.welcomeEmbed
+        .thumbnail.url
     );
   }
 
 
-  if (
-    validUrl(
-      config.image
-    )
-  ) {
-    embed.setImage(
-      config.image.trim()
-    );
-  }
+  const footer =
+    config.welcomeEmbed
+      ?.footer;
 
-
-  if (
-    config.footerEnabled &&
-    config.footerText &&
-    config.footerText.trim()
-  ) {
-    const footer = {
+  if (footer) {
+    embed.setFooter({
       text:
         replaceWelcomeVariables(
-          config.footerText,
+          footer,
           interaction
         ).slice(0, 2048)
-    };
-
-    if (
-      validUrl(
-        config.footerIcon
-      )
-    ) {
-      footer.iconURL =
-        config.footerIcon.trim();
-    }
-
-    embed.setFooter(
-      footer
-    );
-  }
-
-
-  if (
-    config.timestamp
-  ) {
-    embed.setTimestamp();
+    });
   }
 
 
@@ -369,46 +466,30 @@ function createWelcomeEmbed(interaction) {
 }
 
 
-function createWelcomeDashboard(interaction) {
-  const config =
-    getWelcomeConfig(
-      interaction.guildId
+function createWelcomeDashboard(
+  interaction,
+  config
+) {
+  config =
+    normalizeWelcomeConfig(
+      config
     );
 
   const embed =
     new EmbedBuilder()
       .setColor(
-        getWelcomeColor(
-          config.color
+        parseWelcomeColor(
+          config.welcomeEmbed
+            ?.color
         )
       )
       .setTitle(
-        '🛠️ Welcome Embed Builder'
+        '🛠️ Welcome Builder'
       )
       .setDescription(
-        'Build your welcome message using the options below.'
+        'Configure the message that will be sent when someone joins the server.'
       )
       .addFields(
-        {
-          name: '📝 Title',
-          value:
-            config.title ||
-            'Not set',
-          inline: false
-        },
-        {
-          name: '📄 Description',
-          value:
-            config.description ||
-            'Not set',
-          inline: false
-        },
-        {
-          name: '🎨 Color',
-          value:
-            `\`${config.color}\``,
-          inline: true
-        },
         {
           name: '📢 Channel',
           value:
@@ -418,12 +499,36 @@ function createWelcomeDashboard(interaction) {
           inline: true
         },
         {
-          name: '🕐 Timestamp',
+          name: '🟢 Status',
           value:
-            config.timestamp
+            config.enabled
               ? 'Enabled'
               : 'Disabled',
           inline: true
+        },
+        {
+          name: '🎨 Color',
+          value:
+            `\`${config.welcomeEmbed?.color || '#191717'}\``,
+          inline: true
+        },
+        {
+          name: '📝 Title',
+          value:
+            config.welcomeEmbed
+              ?.title ||
+            'Not set',
+          inline: false
+        },
+        {
+          name: '📄 Description',
+          value:
+            (
+              config.welcomeEmbed
+                ?.description ||
+              'Not set'
+            ).slice(0, 1024),
+          inline: false
         }
       );
 
@@ -441,26 +546,35 @@ function createWelcomeDashboard(interaction) {
       );
 
 
+  if (
+    config.channelId
+  ) {
+    channelMenu.setDefaultChannels(
+      config.channelId
+    );
+  }
+
+
   const editMenu =
     new StringSelectMenuBuilder()
       .setCustomId(
         'welcome_edit'
       )
       .setPlaceholder(
-        '✏️ Choose what you want to edit'
+        '✏️ Choose something to edit'
       )
       .addOptions(
         {
           label: 'Title',
           description:
-            'Edit the embed title',
+            'Edit the welcome title',
           value: 'title',
           emoji: '📝'
         },
         {
           label: 'Description',
           description:
-            'Edit the embed description',
+            'Edit the welcome description',
           value: 'description',
           emoji: '📄'
         },
@@ -472,37 +586,30 @@ function createWelcomeDashboard(interaction) {
           emoji: '🎨'
         },
         {
-          label: 'Author',
+          label: 'Footer',
           description:
-            'Edit the embed author',
-          value: 'author',
-          emoji: '👤'
+            'Change the embed footer',
+          value: 'footer',
+          emoji: '🔻'
+        },
+        {
+          label: 'Image',
+          description:
+            'Set the welcome image',
+          value: 'image',
+          emoji: '🖼️'
         },
         {
           label: 'Thumbnail',
           description:
             'Set the thumbnail',
           value: 'thumbnail',
-          emoji: '🖼️'
-        },
-        {
-          label: 'Image',
-          description:
-            'Set the embed image',
-          value: 'image',
           emoji: '🌄'
-        },
-        {
-          label: 'Footer',
-          description:
-            'Edit the footer',
-          value: 'footer',
-          emoji: '🦶'
         }
       );
 
 
-  const menuRow =
+  const channelRow =
     new ActionRowBuilder()
       .addComponents(
         channelMenu
@@ -516,7 +623,7 @@ function createWelcomeDashboard(interaction) {
       );
 
 
-  const buttons =
+  const buttonRow =
     new ActionRowBuilder()
       .addComponents(
         new ButtonBuilder()
@@ -526,9 +633,7 @@ function createWelcomeDashboard(interaction) {
           .setLabel(
             'Preview'
           )
-          .setEmoji(
-            '👀'
-          )
+          .setEmoji('👀')
           .setStyle(
             ButtonStyle.Primary
           ),
@@ -540,9 +645,7 @@ function createWelcomeDashboard(interaction) {
           .setLabel(
             'Save'
           )
-          .setEmoji(
-            '💾'
-          )
+          .setEmoji('💾')
           .setStyle(
             ButtonStyle.Success
           ),
@@ -574,29 +677,23 @@ function createWelcomeDashboard(interaction) {
           .setLabel(
             'Reset'
           )
-          .setEmoji(
-            '🔄'
-          )
+          .setEmoji('🔄')
           .setStyle(
-            ButtonStyle.Danger
+            ButtonStyle.Secondary
           )
       );
 
 
   return {
-    embeds: [
-      embed
-    ],
+    embeds: [embed],
     components: [
-      menuRow,
+      channelRow,
       editRow,
-      buttons
+      buttonRow
     ]
   };
 }
-
-
-function createWelcomeModal(
+async function createWelcomeModal(
   customId,
   title,
   value,
@@ -606,25 +703,16 @@ function createWelcomeModal(
 ) {
   const input =
     new TextInputBuilder()
-      .setCustomId(
-        'value'
-      )
-      .setLabel(
-        label
-      )
-      .setStyle(
-        style
-      )
-      .setRequired(
-        false
-      )
-      .setMaxLength(
-        maxLength
-      );
+      .setCustomId('value')
+      .setLabel(label)
+      .setStyle(style)
+      .setRequired(false)
+      .setMaxLength(maxLength);
 
   if (
     value !== undefined &&
-    value !== null
+    value !== null &&
+    String(value).length > 0
   ) {
     input.setValue(
       String(value).slice(
@@ -635,23 +723,118 @@ function createWelcomeModal(
   }
 
   return new ModalBuilder()
-    .setCustomId(
-      customId
-    )
-    .setTitle(
-      title
-    )
+    .setCustomId(customId)
+    .setTitle(title)
     .addComponents(
       new ActionRowBuilder()
-        .addComponents(
-          input
-        )
+        .addComponents(input)
     );
 }
 
 
+async function saveWelcomeBuilderConfig(
+  client,
+  guildId,
+  config
+) {
+  try {
+    const normalized =
+      normalizeWelcomeConfig(
+        config
+      );
+
+    const databaseConfig = {
+      enabled:
+        normalized.enabled,
+
+      channelId:
+        normalized.channelId,
+
+      welcomeMessage:
+        normalized.welcomeMessage ||
+        normalized.welcomeEmbed
+          ?.description ||
+        'Welcome {user} to {server}!',
+
+      welcomePing:
+        normalized.welcomePing === true,
+
+      welcomeEmbed: {
+        title:
+          normalized.welcomeEmbed
+            ?.title ||
+          '🎉 Welcome!',
+
+        description:
+          normalized.welcomeEmbed
+            ?.description ||
+          normalized.welcomeMessage ||
+          'Welcome {user} to {server}!',
+
+        color:
+          normalized.welcomeEmbed
+            ?.color ||
+          '#191717',
+
+        footer:
+          normalized.welcomeEmbed
+            ?.footer ||
+          null,
+
+        image: {
+          url:
+            getWelcomeImageUrl(
+              normalized
+            )
+        }
+      },
+
+      welcomeImage:
+        getWelcomeImageUrl(
+          normalized
+        )
+    };
+
+
+    const result =
+      await saveWelcomeConfig(
+        client,
+        guildId,
+        databaseConfig
+      );
+
+
+    if (
+      result === false
+    ) {
+      return false;
+    }
+
+
+    temporaryWelcomeConfigs.set(
+      guildId,
+      normalized
+    );
+
+    return true;
+
+  } catch (error) {
+    logger.error(
+      'Failed to save welcome configuration:',
+      {
+        guildId,
+        error
+      }
+    );
+
+    return false;
+  }
+}
+
+
 async function handleWelcomeInteraction(
-  interaction
+  interaction,
+  client
 ) {
   if (
     !interaction.guildId
@@ -660,30 +843,39 @@ async function handleWelcomeInteraction(
   }
 
 
-  /* =========================
-     /welcome
-  ========================= */
+  /* =====================================================
+     /welcome COMMAND
+  ===================================================== */
 
   if (
     interaction.isChatInputCommand() &&
     interaction.commandName ===
       'welcome'
   ) {
+    const config =
+      await loadWelcomeBuilderConfig(
+        client,
+        interaction.guildId
+      );
+
+
     await interaction.reply({
       ...createWelcomeDashboard(
-        interaction
+        interaction,
+        config
       ),
       flags:
         MessageFlags.Ephemeral
     });
 
+
     return true;
   }
 
 
-  /* =========================
+  /* =====================================================
      CHANNEL SELECT
-  ========================= */
+  ===================================================== */
 
   if (
     interaction.isChannelSelectMenu() &&
@@ -691,26 +883,38 @@ async function handleWelcomeInteraction(
       'welcome_channel'
   ) {
     const config =
-      getWelcomeConfig(
+      await loadWelcomeBuilderConfig(
+        client,
         interaction.guildId
       );
 
+
     config.channelId =
-      interaction.values[0];
+      interaction.values[0] ||
+      null;
+
+
+    temporaryWelcomeConfigs.set(
+      interaction.guildId,
+      config
+    );
+
 
     await interaction.update(
       createWelcomeDashboard(
-        interaction
+        interaction,
+        config
       )
     );
+
 
     return true;
   }
 
 
-  /* =========================
-     EDIT MENU
-  ========================= */
+  /* =====================================================
+     EDIT SELECT MENU
+  ===================================================== */
 
   if (
     interaction.isStringSelectMenu() &&
@@ -718,9 +922,11 @@ async function handleWelcomeInteraction(
       'welcome_edit'
   ) {
     const config =
-      getWelcomeConfig(
+      await loadWelcomeBuilderConfig(
+        client,
         interaction.guildId
       );
+
 
     const selected =
       interaction.values[0];
@@ -733,7 +939,9 @@ async function handleWelcomeInteraction(
         createWelcomeModal(
           'welcome_modal_title',
           'Edit Welcome Title',
-          config.title,
+          config.welcomeEmbed
+            ?.title ||
+            '',
           'Title',
           TextInputStyle.Short,
           256
@@ -752,7 +960,10 @@ async function handleWelcomeInteraction(
         createWelcomeModal(
           'welcome_modal_description',
           'Edit Welcome Description',
-          config.description,
+          config.welcomeEmbed
+            ?.description ||
+            config.welcomeMessage ||
+            '',
           'Description',
           TextInputStyle.Paragraph,
           4096
@@ -770,64 +981,12 @@ async function handleWelcomeInteraction(
         createWelcomeModal(
           'welcome_modal_color',
           'Edit Embed Color',
-          config.color,
+          config.welcomeEmbed
+            ?.color ||
+            '#191717',
           'Hex Color',
           TextInputStyle.Short,
           7
-        )
-      );
-
-      return true;
-    }
-
-
-    if (
-      selected === 'author'
-    ) {
-      await interaction.showModal(
-        createWelcomeModal(
-          'welcome_modal_author',
-          'Edit Author',
-          config.authorName,
-          'Author Name',
-          TextInputStyle.Short,
-          256
-        )
-      );
-
-      return true;
-    }
-
-
-    if (
-      selected === 'thumbnail'
-    ) {
-      await interaction.showModal(
-        createWelcomeModal(
-          'welcome_modal_thumbnail',
-          'Edit Thumbnail',
-          config.thumbnail,
-          'Image URL',
-          TextInputStyle.Short,
-          1000
-        )
-      );
-
-      return true;
-    }
-
-
-    if (
-      selected === 'image'
-    ) {
-      await interaction.showModal(
-        createWelcomeModal(
-          'welcome_modal_image',
-          'Edit Image',
-          config.image,
-          'Image URL',
-          TextInputStyle.Short,
-          1000
         )
       );
 
@@ -841,11 +1000,56 @@ async function handleWelcomeInteraction(
       await interaction.showModal(
         createWelcomeModal(
           'welcome_modal_footer',
-          'Edit Footer',
-          config.footerText,
-          'Footer Text',
+          'Edit Embed Footer',
+          config.welcomeEmbed
+            ?.footer ||
+            '',
+          'Footer',
           TextInputStyle.Short,
           2048
+        )
+      );
+
+      return true;
+    }
+
+
+    if (
+      selected === 'image'
+    ) {
+      await interaction.showModal(
+        createWelcomeModal(
+          'welcome_modal_image',
+          'Edit Welcome Image',
+          getWelcomeImageUrl(
+            config
+          ) || '',
+          'Image URL',
+          TextInputStyle.Short,
+          1000
+        )
+      );
+
+      return true;
+    }
+
+
+    if (
+      selected === 'thumbnail'
+    ) {
+      const thumbnail =
+        config.welcomeEmbed
+          ?.thumbnail?.url ||
+        '';
+
+      await interaction.showModal(
+        createWelcomeModal(
+          'welcome_modal_thumbnail',
+          'Edit Thumbnail',
+          thumbnail,
+          'Image URL',
+          TextInputStyle.Short,
+          1000
         )
       );
 
@@ -854,9 +1058,9 @@ async function handleWelcomeInteraction(
   }
 
 
-  /* =========================
+  /* =====================================================
      BUTTONS
-  ========================= */
+  ===================================================== */
 
   if (
     interaction.isButton() &&
@@ -865,10 +1069,15 @@ async function handleWelcomeInteraction(
     )
   ) {
     const config =
-      getWelcomeConfig(
+      await loadWelcomeBuilderConfig(
+        client,
         interaction.guildId
       );
 
+
+    /* ===============================
+       PREVIEW
+    =============================== */
 
     if (
       interaction.customId ===
@@ -876,34 +1085,71 @@ async function handleWelcomeInteraction(
     ) {
       await interaction.reply({
         content:
-          '👀 **Welcome Message Preview**',
+          config.welcomePing
+            ? interaction.user.toString()
+            : null,
+
         embeds: [
           createWelcomeEmbed(
-            interaction
+            interaction,
+            config
           )
         ],
+
         flags:
           MessageFlags.Ephemeral
       });
 
+
       return true;
     }
 
+
+    /* ===============================
+       SAVE
+    =============================== */
 
     if (
       interaction.customId ===
         'welcome_save'
     ) {
+      const saved =
+        await saveWelcomeBuilderConfig(
+          client,
+          interaction.guildId,
+          config
+        );
+
+
+      if (!saved) {
+        await interaction.reply({
+          content:
+            '❌ I could not save the welcome configuration. Check the bot console for the database error.',
+
+          flags:
+            MessageFlags.Ephemeral
+        });
+
+        return true;
+      }
+
+
       await interaction.reply({
         content:
-          '💾 **Welcome embed saved!**',
+          '✅ Welcome settings saved successfully!',
+
         flags:
           MessageFlags.Ephemeral
       });
 
+
       return true;
     }
 
+
+    /* ===============================
+       ENABLE / DISABLE
+    =============================== */
 
     if (
       interaction.customId ===
@@ -912,38 +1158,81 @@ async function handleWelcomeInteraction(
       config.enabled =
         !config.enabled;
 
+
+      const saved =
+        await saveWelcomeBuilderConfig(
+          client,
+          interaction.guildId,
+          config
+        );
+
+
+      if (!saved) {
+        await interaction.reply({
+          content:
+            '❌ Failed to save the welcome status.',
+
+          flags:
+            MessageFlags.Ephemeral
+        });
+
+        return true;
+      }
+
+
       await interaction.update(
         createWelcomeDashboard(
-          interaction
+          interaction,
+          config
         )
       );
+
 
       return true;
     }
 
 
+    /* ===============================
+       RESET
+    =============================== */
+
     if (
       interaction.customId ===
         'welcome_reset'
     ) {
-      welcomeConfigs.delete(
-        interaction.guildId
+      const resetConfig =
+        defaultWelcomeConfig();
+
+
+      temporaryWelcomeConfigs.set(
+        interaction.guildId,
+        resetConfig
       );
+
+
+      await saveWelcomeBuilderConfig(
+        client,
+        interaction.guildId,
+        resetConfig
+      );
+
 
       await interaction.update(
         createWelcomeDashboard(
-          interaction
+          interaction,
+          resetConfig
         )
       );
+
 
       return true;
     }
   }
 
 
-  /* =========================
+  /* =====================================================
      MODALS
-  ========================= */
+  ===================================================== */
 
   if (
     interaction.isModalSubmit() &&
@@ -952,11 +1241,14 @@ async function handleWelcomeInteraction(
     )
   ) {
     const config =
-      getWelcomeConfig(
+      await loadWelcomeBuilderConfig(
+        client,
         interaction.guildId
       );
 
-    let value;
+
+    let value = '';
+
 
     try {
       value =
@@ -968,23 +1260,39 @@ async function handleWelcomeInteraction(
     }
 
 
+    /* ===============================
+       TITLE
+    =============================== */
+
     if (
       interaction.customId ===
         'welcome_modal_title'
     ) {
-      config.title =
+      config.welcomeEmbed.title =
         value.trim();
     }
 
+
+    /* ===============================
+       DESCRIPTION
+    =============================== */
 
     else if (
       interaction.customId ===
         'welcome_modal_description'
     ) {
-      config.description =
+      config.welcomeEmbed.description =
         value;
+
+      config.welcomeMessage =
+        value ||
+        'Welcome {user} to {server}!';
     }
 
+
+    /* ===============================
+       COLOR
+    =============================== */
 
     else if (
       interaction.customId ===
@@ -993,6 +1301,7 @@ async function handleWelcomeInteraction(
       const color =
         value.trim();
 
+
       if (
         !/^#[0-9A-Fa-f]{6}$/.test(
           color
@@ -1000,7 +1309,8 @@ async function handleWelcomeInteraction(
       ) {
         await interaction.reply({
           content:
-            '❌ Invalid color. Use a format like `#191717`.',
+            '❌ Invalid color. Use a 6-digit hex color such as `#191717`.',
+
           flags:
             MessageFlags.Ephemeral
         });
@@ -1008,95 +1318,139 @@ async function handleWelcomeInteraction(
         return true;
       }
 
-      config.color =
+
+      config.welcomeEmbed.color =
         color;
     }
 
 
-    else if (
-      interaction.customId ===
-        'welcome_modal_author'
-    ) {
-      config.authorName =
-        value.trim();
-
-      config.authorEnabled =
-        Boolean(
-          config.authorName
-        );
-    }
-
-
-    else if (
-      interaction.customId ===
-        'welcome_modal_thumbnail'
-    ) {
-      if (
-        value.trim() &&
-        !validUrl(
-          value.trim()
-        )
-      ) {
-        await interaction.reply({
-          content:
-            '❌ Invalid image URL.',
-          flags:
-            MessageFlags.Ephemeral
-        });
-
-        return true;
-      }
-
-      config.thumbnail =
-        value.trim();
-    }
-
-
-    else if (
-      interaction.customId ===
-        'welcome_modal_image'
-    ) {
-      if (
-        value.trim() &&
-        !validUrl(
-          value.trim()
-        )
-      ) {
-        await interaction.reply({
-          content:
-            '❌ Invalid image URL.',
-          flags:
-            MessageFlags.Ephemeral
-        });
-
-        return true;
-      }
-
-      config.image =
-        value.trim();
-    }
-
+    /* ===============================
+       FOOTER
+    =============================== */
 
     else if (
       interaction.customId ===
         'welcome_modal_footer'
     ) {
-      config.footerText =
+      config.welcomeEmbed.footer =
+        value.trim() ||
+        null;
+    }
+
+
+    /* ===============================
+       IMAGE
+    =============================== */
+
+    else if (
+      interaction.customId ===
+        'welcome_modal_image'
+    ) {
+      const image =
         value.trim();
 
-      config.footerEnabled =
-        Boolean(
-          config.footerText
-        );
+
+      if (
+        image &&
+        !isValidUrl(image)
+      ) {
+        await interaction.reply({
+          content:
+            '❌ That is not a valid image URL.',
+
+          flags:
+            MessageFlags.Ephemeral
+        });
+
+        return true;
+      }
+
+
+      config.welcomeImage =
+        image || null;
+
+
+      config.welcomeEmbed.image = {
+        url:
+          image || null
+      };
+    }
+
+
+    /* ===============================
+       THUMBNAIL
+    =============================== */
+
+    else if (
+      interaction.customId ===
+        'welcome_modal_thumbnail'
+    ) {
+      const thumbnail =
+        value.trim();
+
+
+      if (
+        thumbnail &&
+        !isValidUrl(
+          thumbnail
+        )
+      ) {
+        await interaction.reply({
+          content:
+            '❌ That is not a valid image URL.',
+
+          flags:
+            MessageFlags.Ephemeral
+        });
+
+        return true;
+      }
+
+
+      config.welcomeEmbed.thumbnail =
+        thumbnail
+          ? {
+              url: thumbnail
+            }
+          : null;
+    }
+
+
+    temporaryWelcomeConfigs.set(
+      interaction.guildId,
+      config
+    );
+
+
+    const saved =
+      await saveWelcomeBuilderConfig(
+        client,
+        interaction.guildId,
+        config
+      );
+
+
+    if (!saved) {
+      await interaction.reply({
+        content:
+          '❌ Your change could not be saved. Check the bot console for the database error.',
+
+        flags:
+          MessageFlags.Ephemeral
+      });
+
+      return true;
     }
 
 
     await interaction.reply({
       content:
-        '✅ Updated successfully.',
+        '✅ Updated and saved successfully!',
+
       flags:
         MessageFlags.Ephemeral
     });
+
 
     return true;
   }
@@ -1104,19 +1458,10 @@ async function handleWelcomeInteraction(
 
   return false;
 }
-
-
-/* =========================================================
-   MAIN INTERACTION CREATE
-========================================================= */
-
 export default {
   name: Events.InteractionCreate,
 
-  async execute(
-    interaction,
-    client
-  ) {
+  async execute(interaction, client) {
     const interactionTraceContext =
       createInteractionTraceContext(
         interaction
@@ -1127,7 +1472,6 @@ export default {
 
     interaction.traceId =
       interactionTraceContext.traceId;
-
 
     return runWithTraceContext(
       interactionTraceContext,
@@ -1148,7 +1492,8 @@ export default {
 
           if (
             await handleWelcomeInteraction(
-              interaction
+              interaction,
+              client
             )
           ) {
             return;
@@ -1168,12 +1513,16 @@ export default {
                 {
                   event:
                     'interaction.command.received',
+
                   traceId:
                     interactionTraceContext.traceId,
+
                   guildId:
                     interaction.guildId,
+
                   userId:
                     interaction.user?.id,
+
                   command:
                     interaction.commandName
                 }
@@ -1182,15 +1531,19 @@ export default {
 
               validateChatInputPayloadOrThrow(
                 interaction,
-                withTraceContext(
-                  {
-                    type:
-                      'command_input_validation',
-                    commandName:
-                      interaction.commandName
-                  },
-                  interactionTraceContext
-                )
+                {
+                  traceId:
+                    interactionTraceContext.traceId,
+
+                  guildId:
+                    interaction.guildId,
+
+                  userId:
+                    interaction.user?.id,
+
+                  command:
+                    interaction.commandName
+                }
               );
 
 
@@ -1203,15 +1556,24 @@ export default {
               if (!command) {
                 throw createError(
                   `No command matching ${interaction.commandName} was found.`,
+
                   ErrorTypes.CONFIGURATION,
+
                   'Sorry, that command does not exist.',
-                  withTraceContext(
-                    {
-                      commandName:
-                        interaction.commandName
-                    },
-                    interactionTraceContext
-                  )
+
+                  {
+                    traceId:
+                      interactionTraceContext.traceId,
+
+                    guildId:
+                      interaction.guildId,
+
+                    userId:
+                      interaction.user?.id,
+
+                    command:
+                      interaction.commandName
+                  }
                 );
               }
 
@@ -1224,17 +1586,26 @@ export default {
               ) {
                 throw createError(
                   'Bot is in maintenance mode',
+
                   ErrorTypes.CONFIGURATION,
+
                   getBotMessage(
                     'maintenanceMode'
                   ),
-                  withTraceContext(
-                    {
-                      commandName:
-                        interaction.commandName
-                    },
-                    interactionTraceContext
-                  )
+
+                  {
+                    traceId:
+                      interactionTraceContext.traceId,
+
+                    guildId:
+                      interaction.guildId,
+
+                    userId:
+                      interaction.user?.id,
+
+                    command:
+                      interaction.commandName
+                  }
                 );
               }
 
@@ -1246,19 +1617,26 @@ export default {
               ) {
                 throw createError(
                   `Feature disabled for category ${command.category}`,
+
                   ErrorTypes.CONFIGURATION,
+
                   getBotMessage(
                     'commandDisabled'
                   ),
-                  withTraceContext(
-                    {
-                      commandName:
-                        interaction.commandName,
-                      category:
-                        command.category
-                    },
-                    interactionTraceContext
-                  )
+
+                  {
+                    traceId:
+                      interactionTraceContext.traceId,
+
+                    guildId:
+                      interaction.guildId,
+
+                    userId:
+                      interaction.user?.id,
+
+                    command:
+                      interaction.commandName
+                  }
                 );
               }
 
@@ -1301,7 +1679,9 @@ export default {
 
                   throw createError(
                     `Default command cooldown active for ${interaction.commandName}`,
+
                     ErrorTypes.RATE_LIMIT,
+
                     getBotMessage(
                       'cooldownActive',
                       {
@@ -1309,14 +1689,22 @@ export default {
                           `${remainingSec}s`
                       }
                     ),
-                    withTraceContext(
-                      {
-                        commandName:
-                          interaction.commandName,
-                        remainingSec
-                      },
-                      interactionTraceContext
-                    )
+
+                    {
+                      traceId:
+                        interactionTraceContext.traceId,
+
+                      guildId:
+                        interaction.guildId,
+
+                      userId:
+                        interaction.user?.id,
+
+                      command:
+                        interaction.commandName,
+
+                      remainingSec
+                    }
                   );
                 }
 
@@ -1349,27 +1737,41 @@ export default {
 
                 throw createError(
                   `Risky command cooldown active for ${interaction.commandName}`,
+
                   ErrorTypes.RATE_LIMIT,
+
                   `This command is on cooldown. Please wait ${formattedCooldown} before trying again.`,
-                  withTraceContext(
-                    {
-                      commandName:
-                        interaction.commandName,
-                      subtype:
-                        'command_cooldown',
-                      expected:
-                        true,
-                      cooldownMs:
-                        abuseProtection.remainingMs,
-                      cooldownWindowMs:
-                        abuseProtection.policy
-                          ?.windowMs,
-                      cooldownMaxAttempts:
-                        abuseProtection.policy
-                          ?.maxAttempts
-                    },
-                    interactionTraceContext
-                  )
+
+                  {
+                    traceId:
+                      interactionTraceContext.traceId,
+
+                    guildId:
+                      interaction.guildId,
+
+                    userId:
+                      interaction.user?.id,
+
+                    command:
+                      interaction.commandName,
+
+                    subtype:
+                      'command_cooldown',
+
+                    expected:
+                      true,
+
+                    cooldownMs:
+                      abuseProtection.remainingMs,
+
+                    cooldownWindowMs:
+                      abuseProtection.policy
+                        ?.windowMs,
+
+                    cooldownMaxAttempts:
+                      abuseProtection.policy
+                        ?.maxAttempts
+                  }
                 );
               }
 
@@ -1407,17 +1809,24 @@ export default {
                 ) {
                   throw createError(
                     `Command ${accessKey} is disabled in this guild`,
+
                     ErrorTypes.CONFIGURATION,
+
                     'This command has been disabled for this server.',
-                    withTraceContext(
-                      {
-                        commandName:
-                          accessKey,
-                        guildId:
-                          interaction.guild.id
-                      },
-                      interactionTraceContext
-                    )
+
+                    {
+                      traceId:
+                        interactionTraceContext.traceId,
+
+                      guildId:
+                        interaction.guild.id,
+
+                      userId:
+                        interaction.user?.id,
+
+                      command:
+                        accessKey
+                    }
                   );
                 }
               }
@@ -1430,6 +1839,7 @@ export default {
                   {
                     source:
                       'interactionCreate',
+
                     guildConfig
                   }
                 );
@@ -1452,23 +1862,33 @@ export default {
               await handleInteractionError(
                 interaction,
                 error,
-                withTraceContext(
-                  {
-                    type:
-                      'command',
-                    commandName:
-                      interaction.commandName,
-                    subtype:
-                      COMMAND_ERROR_SUBTYPES[
-                        interaction.commandName
-                      ] ||
-                      error?.context
-                        ?.subtype
-                  },
-                  interactionTraceContext
-                )
+                {
+                  traceId:
+                    interactionTraceContext.traceId,
+
+                  guildId:
+                    interaction.guildId,
+
+                  userId:
+                    interaction.user?.id,
+
+                  command:
+                    interaction.commandName,
+
+                  type:
+                    'command',
+
+                  subtype:
+                    COMMAND_ERROR_SUBTYPES[
+                      interaction.commandName
+                    ] ||
+                    error?.context
+                      ?.subtype
+                }
               );
             }
+
+            return;
           }
 
 
@@ -1486,8 +1906,7 @@ export default {
 
 
             if (
-              autocompleteCommand
-                ?.autocomplete
+              autocompleteCommand?.autocomplete
             ) {
               try {
                 await autocompleteCommand.autocomplete(
@@ -1500,12 +1919,15 @@ export default {
                   {
                     error:
                       error.message,
+
                     guildId:
                       interaction.guildId,
+
                     commandName:
                       interaction.commandName
                   }
                 );
+
 
                 await interaction
                   .respond([])
@@ -1587,12 +2009,15 @@ export default {
                   {
                     error:
                       error.message,
+
                     guildId:
                       interaction.guildId,
+
                     commandName:
                       interaction.commandName
                   }
                 );
+
 
                 await interaction
                   .respond([])
@@ -1665,12 +2090,15 @@ export default {
                   {
                     error:
                       error.message,
+
                     guildId:
                       interaction.guildId,
+
                     commandName:
                       interaction.commandName
                   }
                 );
+
 
                 await interaction
                   .respond([])
@@ -1678,7 +2106,6 @@ export default {
                     () => {}
                   );
               }
-
             }
 
 
@@ -1705,7 +2132,7 @@ export default {
                   interaction.guild;
 
 
-                let panels =
+                const panels =
                   await getAllReactionRoleMessages(
                     client,
                     guildId
@@ -1787,18 +2214,6 @@ export default {
                 }
 
 
-                if (
-                  validPanels.length ===
-                  0
-                ) {
-                  await interaction.respond(
-                    []
-                  );
-
-                  return;
-                }
-
-
                 const choices =
                   await Promise.all(
                     validPanels
@@ -1838,17 +2253,14 @@ export default {
                               'Untitled Panel';
 
 
-                            const channelName =
-                              channel?.name ??
-                              'unknown';
-
-
                             return {
                               name:
-                                `${title} (${channelName})`.substring(
-                                  0,
-                                  100
-                                ),
+                                `${title} (${channel.name})`
+                                  .substring(
+                                    0,
+                                    100
+                                  ),
+
                               value:
                                 panel.messageId
                             };
@@ -1861,15 +2273,11 @@ export default {
                   );
 
 
-                const validChoices =
-                  choices.filter(
-                    c => c !== null
+                  await interaction.respond(
+                    choices.filter(
+                      Boolean
+                    )
                   );
-
-
-                await interaction.respond(
-                  validChoices
-                );
 
               } catch (error) {
                 logger.error(
@@ -1877,12 +2285,15 @@ export default {
                   {
                     error:
                       error.message,
+
                     guildId:
                       interaction.guildId,
+
                     commandName:
                       interaction.commandName
                   }
                 );
+
 
                 await interaction
                   .respond([])
@@ -1892,9 +2303,7 @@ export default {
               }
             }
           }
-
-
-          /* =================================================
+                    /* =================================================
              BUTTONS
           ================================================= */
 
@@ -1924,7 +2333,6 @@ export default {
                   buttonType
                 );
 
-
               if (button) {
                 try {
                   await button.execute(
@@ -1936,31 +2344,37 @@ export default {
                   await handleInteractionError(
                     interaction,
                     error,
-                    withTraceContext(
-                      {
-                        type:
-                          'button',
-                        customId:
-                          interaction.customId,
-                        handler:
-                          'todo'
-                      },
-                      interactionTraceContext
-                    )
+                    {
+                      traceId:
+                        interactionTraceContext.traceId,
+                      guildId:
+                        interaction.guildId,
+                      userId:
+                        interaction.user?.id,
+                      type:
+                        'button',
+                      customId:
+                        interaction.customId,
+                      handler:
+                        'todo'
+                    }
                   );
                 }
-
               } else {
                 throw createError(
                   `No button handler found for ${buttonType}`,
                   ErrorTypes.CONFIGURATION,
                   'This button is not available.',
-                  withTraceContext(
-                    {
-                      buttonType
-                    },
-                    interactionTraceContext
-                  )
+                  {
+                    traceId:
+                      interactionTraceContext.traceId,
+                    guildId:
+                      interaction.guildId,
+                    userId:
+                      interaction.user?.id,
+                    customId:
+                      interaction.customId
+                  }
                 );
               }
 
@@ -2000,12 +2414,16 @@ export default {
                 `No button handler found for ${customId}`,
                 ErrorTypes.CONFIGURATION,
                 'This button is not available.',
-                withTraceContext(
-                  {
-                    customId
-                  },
-                  interactionTraceContext
-                )
+                {
+                  traceId:
+                    interactionTraceContext.traceId,
+                  guildId:
+                    interaction.guildId,
+                  userId:
+                    interaction.user?.id,
+                  customId:
+                    interaction.customId
+                }
               );
             }
 
@@ -2020,17 +2438,20 @@ export default {
               await handleInteractionError(
                 interaction,
                 error,
-                withTraceContext(
-                  {
-                    type:
-                      'button',
-                    customId:
-                      interaction.customId,
-                    handler:
-                      'general'
-                  },
-                  interactionTraceContext
-                )
+                {
+                  traceId:
+                    interactionTraceContext.traceId,
+                  guildId:
+                    interaction.guildId,
+                  userId:
+                    interaction.user?.id,
+                  type:
+                    'button',
+                  customId:
+                    interaction.customId,
+                  handler:
+                    'general'
+                }
               );
             }
           }
@@ -2075,12 +2496,16 @@ export default {
                 `No select menu handler found for ${customId}`,
                 ErrorTypes.CONFIGURATION,
                 'This select menu is not available.',
-                withTraceContext(
-                  {
-                    customId
-                  },
-                  interactionTraceContext
-                )
+                {
+                  traceId:
+                    interactionTraceContext.traceId,
+                  guildId:
+                    interaction.guildId,
+                  userId:
+                    interaction.user?.id,
+                  customId:
+                    interaction.customId
+                }
               );
             }
 
@@ -2095,15 +2520,18 @@ export default {
               await handleInteractionError(
                 interaction,
                 error,
-                withTraceContext(
-                  {
-                    type:
-                      'select_menu',
-                    customId:
-                      interaction.customId
-                  },
-                  interactionTraceContext
-                )
+                {
+                  traceId:
+                    interactionTraceContext.traceId,
+                  guildId:
+                    interaction.guildId,
+                  userId:
+                    interaction.user?.id,
+                  type:
+                    'select_menu',
+                  customId:
+                    interaction.customId
+                }
               );
             }
           }
@@ -2129,17 +2557,20 @@ export default {
                 await handleInteractionError(
                   interaction,
                   error,
-                  withTraceContext(
-                    {
-                      type:
-                        'modal',
-                      customId:
-                        interaction.customId,
-                      handler:
-                        'application'
-                    },
-                    interactionTraceContext
-                  )
+                  {
+                    traceId:
+                      interactionTraceContext.traceId,
+                    guildId:
+                      interaction.guildId,
+                    userId:
+                      interaction.user?.id,
+                    type:
+                      'modal',
+                    customId:
+                      interaction.customId,
+                    handler:
+                      'application'
+                  }
                 );
               }
 
@@ -2169,6 +2600,7 @@ export default {
                 {
                   event:
                     'interaction.modal.inline_skipped',
+
                   traceId:
                     interactionTraceContext.traceId
                 }
@@ -2207,12 +2639,16 @@ export default {
                 `No modal handler found for ${customId}`,
                 ErrorTypes.CONFIGURATION,
                 'This form is not available.',
-                withTraceContext(
-                  {
-                    customId
-                  },
-                  interactionTraceContext
-                )
+                {
+                  traceId:
+                    interactionTraceContext.traceId,
+                  guildId:
+                    interaction.guildId,
+                  userId:
+                    interaction.user?.id,
+                  customId:
+                    interaction.customId
+                }
               );
             }
 
@@ -2227,20 +2663,24 @@ export default {
               await handleInteractionError(
                 interaction,
                 error,
-                withTraceContext(
-                  {
-                    type:
-                      'modal',
-                    customId:
-                      interaction.customId,
-                    handler:
-                      'general'
-                  },
-                  interactionTraceContext
-                )
+                {
+                  traceId:
+                    interactionTraceContext.traceId,
+                  guildId:
+                    interaction.guildId,
+                  userId:
+                    interaction.user?.id,
+                  type:
+                    'modal',
+                  customId:
+                    interaction.customId,
+                  handler:
+                    'general'
+                }
               );
             }
           }
+
 
         } catch (error) {
           logger.error(
@@ -2248,15 +2688,21 @@ export default {
             {
               event:
                 'interaction.unhandled_error',
+
               errorCode:
                 ErrorCodes.INTERACTION_UNHANDLED,
+
               error,
+
               traceId:
                 interactionTraceContext.traceId,
+
               interactionId:
                 interaction.id,
+
               guildId:
                 interaction.guildId,
+
               userId:
                 interaction.user?.id
             }
@@ -2267,19 +2713,28 @@ export default {
             await handleInteractionError(
               interaction,
               error,
-              withTraceContext(
-                {
-                  type:
-                    'interaction',
-                  commandName:
-                    interaction.commandName,
-                  customId:
-                    interaction.customId,
-                  source:
-                    'interactionCreate.unhandled'
-                },
-                interactionTraceContext
-              )
+              {
+                traceId:
+                  interactionTraceContext.traceId,
+
+                guildId:
+                  interaction.guildId,
+
+                userId:
+                  interaction.user?.id,
+
+                type:
+                  'interaction',
+
+                commandName:
+                  interaction.commandName,
+
+                customId:
+                  interaction.customId,
+
+                source:
+                  'interactionCreate.unhandled'
+              }
             );
           } catch (replyError) {
             logger.error(
@@ -2287,10 +2742,13 @@ export default {
               {
                 event:
                   'interaction.error_response_failed',
+
                 errorCode:
                   ErrorCodes.INTERACTION_RESPONSE_FAILED,
+
                 error:
                   replyError,
+
                 traceId:
                   interactionTraceContext.traceId
               }
