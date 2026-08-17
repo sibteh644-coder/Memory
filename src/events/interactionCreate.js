@@ -116,9 +116,12 @@ function defaultWelcomeConfig() {
       color: '#191717',
       footer:
         'Welcome to {server}!',
+
       image: {
         url: null
-      }
+      },
+
+      thumbnail: null
     },
 
     welcomeImage: null
@@ -221,12 +224,12 @@ function replaceWelcomeVariables(
 
   return String(text)
     .replaceAll(
-      '{user}',
+      '{user.mention}',
       user?.toString() ||
         'User'
     )
     .replaceAll(
-      '{user.mention}',
+      '{user}',
       user?.toString() ||
         'User'
     )
@@ -246,17 +249,17 @@ function replaceWelcomeVariables(
         ''
     )
     .replaceAll(
-      '{server}',
-      guild?.name ||
-        'Server'
-    )
-    .replaceAll(
       '{server.name}',
       guild?.name ||
         'Server'
     )
     .replaceAll(
       '{guild.name}',
+      guild?.name ||
+        'Server'
+    )
+    .replaceAll(
+      '{server}',
       guild?.name ||
         'Server'
     )
@@ -693,7 +696,14 @@ function createWelcomeDashboard(
     ]
   };
 }
-async function createWelcomeModal(
+
+
+/* =========================================================
+   IMPORTANT FIX:
+   This function MUST NOT be async.
+========================================================= */
+
+function createWelcomeModal(
   customId,
   title,
   value,
@@ -786,7 +796,19 @@ async function saveWelcomeBuilderConfig(
             getWelcomeImageUrl(
               normalized
             )
-        }
+        },
+
+        thumbnail:
+          normalized.welcomeEmbed
+            ?.thumbnail?.url
+            ? {
+                url:
+                  normalized
+                    .welcomeEmbed
+                    .thumbnail
+                    .url
+              }
+            : null
       },
 
       welcomeImage:
@@ -1087,7 +1109,7 @@ async function handleWelcomeInteraction(
         content:
           config.welcomePing
             ? interaction.user.toString()
-            : null,
+            : undefined,
 
         embeds: [
           createWelcomeEmbed(
@@ -1458,6 +1480,8 @@ async function handleWelcomeInteraction(
 
   return false;
 }
+
+
 export default {
   name: Events.InteractionCreate,
 
@@ -2273,11 +2297,11 @@ export default {
                   );
 
 
-                  await interaction.respond(
-                    choices.filter(
-                      Boolean
-                    )
-                  );
+                await interaction.respond(
+                  choices.filter(
+                    Boolean
+                  )
+                );
 
               } catch (error) {
                 logger.error(
@@ -2303,7 +2327,9 @@ export default {
               }
             }
           }
-                    /* =================================================
+
+
+          /* =================================================
              BUTTONS
           ================================================= */
 
