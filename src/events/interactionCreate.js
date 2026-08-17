@@ -102,6 +102,7 @@ const COMMAND_ERROR_SUBTYPES = {
 function defaultWelcomeConfig() {
   return {
     enabled: false,
+
     channelId: null,
 
     welcomeMessage:
@@ -111,9 +112,12 @@ function defaultWelcomeConfig() {
 
     welcomeEmbed: {
       title: '🎉 Welcome!',
+
       description:
         'Welcome {user} to {server}!',
+
       color: '#191717',
+
       footer:
         'Welcome to {server}!',
 
@@ -121,7 +125,9 @@ function defaultWelcomeConfig() {
         url: null
       },
 
-      thumbnail: null
+      thumbnail: {
+        url: null
+      }
     },
 
     welcomeImage: null
@@ -129,33 +135,23 @@ function defaultWelcomeConfig() {
 }
 
 
-const temporaryWelcomeConfigs =
-  new Map();
+const temporaryWelcomeConfigs = new Map();
 
 
 function getBuilderConfig(guildId) {
-  if (
-    !temporaryWelcomeConfigs.has(
-      guildId
-    )
-  ) {
+  if (!temporaryWelcomeConfigs.has(guildId)) {
     temporaryWelcomeConfigs.set(
       guildId,
       defaultWelcomeConfig()
     );
   }
 
-  return temporaryWelcomeConfigs.get(
-    guildId
-  );
+  return temporaryWelcomeConfigs.get(guildId);
 }
 
 
-function normalizeWelcomeConfig(
-  config
-) {
-  const defaults =
-    defaultWelcomeConfig();
+function normalizeWelcomeConfig(config) {
+  const defaults = defaultWelcomeConfig();
 
   return {
     ...defaults,
@@ -163,17 +159,33 @@ function normalizeWelcomeConfig(
 
     welcomeEmbed: {
       ...defaults.welcomeEmbed,
-      ...(config?.welcomeEmbed || {})
+      ...(config?.welcomeEmbed || {}),
+
+      image: {
+        ...defaults.welcomeEmbed.image,
+        ...(config?.welcomeEmbed?.image || {})
+      },
+
+      thumbnail: {
+        ...defaults.welcomeEmbed.thumbnail,
+        ...(config?.welcomeEmbed?.thumbnail || {})
+      }
     }
   };
 }
 
 
-async function loadWelcomeBuilderConfig(
-  client,
-  guildId
-) {
+async function loadWelcomeBuilderConfig(client, guildId) {
   try {
+    /*
+     * If we already have a temporary configuration for this guild,
+     * use it. This prevents the database from overwriting unsaved
+     * dashboard changes every time a component is clicked.
+     */
+    if (temporaryWelcomeConfigs.has(guildId)) {
+      return getBuilderConfig(guildId);
+    }
+
     const databaseConfig =
       await getWelcomeConfig(
         client,
@@ -201,9 +213,7 @@ async function loadWelcomeBuilderConfig(
       }
     );
 
-    return getBuilderConfig(
-      guildId
-    );
+    return getBuilderConfig(guildId);
   }
 }
 
@@ -223,89 +233,76 @@ function replaceWelcomeVariables(
     interaction.guild;
 
   return String(text)
-    .replaceAll(
-      '{user.mention}',
-      user?.toString() ||
-        'User'
-    )
+
     .replaceAll(
       '{user}',
-      user?.toString() ||
-        'User'
+      user?.toString() || 'User'
     )
+
+    .replaceAll(
+      '{user.mention}',
+      user?.toString() || 'User'
+    )
+
     .replaceAll(
       '{user.username}',
-      user?.username ||
-        'User'
+      user?.username || 'User'
     )
+
     .replaceAll(
       '{username}',
-      user?.username ||
-        'User'
+      user?.username || 'User'
     )
+
     .replaceAll(
       '{user.id}',
-      user?.id ||
-        ''
+      user?.id || ''
     )
-    .replaceAll(
-      '{server.name}',
-      guild?.name ||
-        'Server'
-    )
-    .replaceAll(
-      '{guild.name}',
-      guild?.name ||
-        'Server'
-    )
+
     .replaceAll(
       '{server}',
-      guild?.name ||
-        'Server'
+      guild?.name || 'Server'
     )
+
+    .replaceAll(
+      '{server.name}',
+      guild?.name || 'Server'
+    )
+
+    .replaceAll(
+      '{guild.name}',
+      guild?.name || 'Server'
+    )
+
     .replaceAll(
       '{guild.id}',
-      guild?.id ||
-        ''
+      guild?.id || ''
     )
+
     .replaceAll(
       '{memberCount}',
-      String(
-        guild?.memberCount ||
-          0
-      )
+      String(guild?.memberCount || 0)
     )
+
     .replaceAll(
       '{membercount}',
-      String(
-        guild?.memberCount ||
-          0
-      )
+      String(guild?.memberCount || 0)
     )
+
     .replaceAll(
       '{count}',
-      String(
-        guild?.memberCount ||
-          0
-      )
+      String(guild?.memberCount || 0)
     );
 }
 
 
-function parseWelcomeColor(
-  value
-) {
-  if (
-    typeof value === 'number'
-  ) {
+function parseWelcomeColor(value) {
+  if (typeof value === 'number') {
     return value;
   }
 
-  if (
-    typeof value === 'string'
-  ) {
-    const trimmed =
-      value.trim();
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
 
     if (
       /^#[0-9A-Fa-f]{6}$/.test(
@@ -323,22 +320,17 @@ function parseWelcomeColor(
 }
 
 
-function isValidUrl(
-  value
-) {
+function isValidUrl(value) {
   if (!value) {
     return false;
   }
 
   try {
-    const url =
-      new URL(value);
+    const url = new URL(value);
 
     return (
-      url.protocol ===
-        'http:' ||
-      url.protocol ===
-        'https:'
+      url.protocol === 'http:' ||
+      url.protocol === 'https:'
     );
 
   } catch {
@@ -347,23 +339,18 @@ function isValidUrl(
 }
 
 
-function getWelcomeImageUrl(
-  config
-) {
+function getWelcomeImageUrl(config) {
   if (
-    typeof config.welcomeImage ===
-      'string' &&
+    typeof config?.welcomeImage === 'string' &&
     config.welcomeImage
   ) {
     return config.welcomeImage;
   }
 
   if (
-    config.welcomeEmbed?.image
-      ?.url
+    config?.welcomeEmbed?.image?.url
   ) {
-    return config.welcomeEmbed
-      .image.url;
+    return config.welcomeEmbed.image.url;
   }
 
   return null;
@@ -383,16 +370,14 @@ function createWelcomeEmbed(
     new EmbedBuilder()
       .setColor(
         parseWelcomeColor(
-          config.welcomeEmbed
-            ?.color
+          config.welcomeEmbed?.color
         )
       );
 
 
   const title =
     replaceWelcomeVariables(
-      config.welcomeEmbed
-        ?.title ||
+      config.welcomeEmbed?.title ||
         '🎉 Welcome!',
       interaction
     );
@@ -406,8 +391,7 @@ function createWelcomeEmbed(
 
   const description =
     replaceWelcomeVariables(
-      config.welcomeEmbed
-        ?.description ||
+      config.welcomeEmbed?.description ||
         config.welcomeMessage ||
         'Welcome {user} to {server}!',
       interaction
@@ -421,38 +405,29 @@ function createWelcomeEmbed(
 
 
   const image =
-    getWelcomeImageUrl(
-      config
-    );
+    getWelcomeImageUrl(config);
 
   if (
     image &&
     isValidUrl(image)
   ) {
-    embed.setImage(
-      image
-    );
+    embed.setImage(image);
   }
 
 
+  const thumbnail =
+    config.welcomeEmbed?.thumbnail?.url;
+
   if (
-    config.welcomeEmbed
-      ?.thumbnail?.url &&
-    isValidUrl(
-      config.welcomeEmbed
-        .thumbnail.url
-    )
+    thumbnail &&
+    isValidUrl(thumbnail)
   ) {
-    embed.setThumbnail(
-      config.welcomeEmbed
-        .thumbnail.url
-    );
+    embed.setThumbnail(thumbnail);
   }
 
 
   const footer =
-    config.welcomeEmbed
-      ?.footer;
+    config.welcomeEmbed?.footer;
 
   if (footer) {
     embed.setFooter({
@@ -478,59 +453,74 @@ function createWelcomeDashboard(
       config
     );
 
+
   const embed =
     new EmbedBuilder()
       .setColor(
         parseWelcomeColor(
-          config.welcomeEmbed
-            ?.color
+          config.welcomeEmbed?.color
         )
       )
+
       .setTitle(
         '🛠️ Welcome Builder'
       )
+
       .setDescription(
         'Configure the message that will be sent when someone joins the server.'
       )
+
       .addFields(
         {
           name: '📢 Channel',
+
           value:
             config.channelId
               ? `<#${config.channelId}>`
               : 'Not selected',
+
           inline: true
         },
+
         {
           name: '🟢 Status',
+
           value:
             config.enabled
               ? 'Enabled'
               : 'Disabled',
+
           inline: true
         },
+
         {
           name: '🎨 Color',
+
           value:
             `\`${config.welcomeEmbed?.color || '#191717'}\``,
+
           inline: true
         },
+
         {
           name: '📝 Title',
+
           value:
-            config.welcomeEmbed
-              ?.title ||
+            config.welcomeEmbed?.title ||
             'Not set',
+
           inline: false
         },
+
         {
           name: '📄 Description',
+
           value:
             (
-              config.welcomeEmbed
-                ?.description ||
+              config.welcomeEmbed?.description ||
               'Not set'
             ).slice(0, 1024),
+
           inline: false
         }
       );
@@ -541,17 +531,17 @@ function createWelcomeDashboard(
       .setCustomId(
         'welcome_channel'
       )
+
       .setPlaceholder(
         '📢 Select welcome channel'
       )
+
       .setChannelTypes(
         ChannelType.GuildText
       );
 
 
-  if (
-    config.channelId
-  ) {
+  if (config.channelId) {
     channelMenu.setDefaultChannels(
       config.channelId
     );
@@ -563,50 +553,75 @@ function createWelcomeDashboard(
       .setCustomId(
         'welcome_edit'
       )
+
       .setPlaceholder(
         '✏️ Choose something to edit'
       )
+
       .addOptions(
         {
           label: 'Title',
+
           description:
             'Edit the welcome title',
+
           value: 'title',
+
           emoji: '📝'
         },
+
         {
           label: 'Description',
+
           description:
             'Edit the welcome description',
+
           value: 'description',
+
           emoji: '📄'
         },
+
         {
           label: 'Color',
+
           description:
             'Change the embed color',
+
           value: 'color',
+
           emoji: '🎨'
         },
+
         {
           label: 'Footer',
+
           description:
             'Change the embed footer',
+
           value: 'footer',
+
           emoji: '🔻'
         },
+
         {
           label: 'Image',
+
           description:
             'Set the welcome image',
+
           value: 'image',
+
           emoji: '🖼️'
         },
+
         {
           label: 'Thumbnail',
+
           description:
             'Set the thumbnail',
+
           value: 'thumbnail',
+
           emoji: '🌄'
         }
       );
@@ -629,6 +644,7 @@ function createWelcomeDashboard(
   const buttonRow =
     new ActionRowBuilder()
       .addComponents(
+
         new ButtonBuilder()
           .setCustomId(
             'welcome_preview'
@@ -689,6 +705,7 @@ function createWelcomeDashboard(
 
   return {
     embeds: [embed],
+
     components: [
       channelRow,
       editRow,
@@ -699,8 +716,8 @@ function createWelcomeDashboard(
 
 
 /* =========================================================
-   IMPORTANT FIX:
-   This function MUST NOT be async.
+   IMPORTANT:
+   DO NOT MAKE THIS FUNCTION ASYNC
 ========================================================= */
 
 function createWelcomeModal(
@@ -714,10 +731,21 @@ function createWelcomeModal(
   const input =
     new TextInputBuilder()
       .setCustomId('value')
-      .setLabel(label)
-      .setStyle(style)
+
+      .setLabel(
+        label
+      )
+
+      .setStyle(
+        style
+      )
+
       .setRequired(false)
-      .setMaxLength(maxLength);
+
+      .setMaxLength(
+        maxLength
+      );
+
 
   if (
     value !== undefined &&
@@ -732,12 +760,21 @@ function createWelcomeModal(
     );
   }
 
+
   return new ModalBuilder()
-    .setCustomId(customId)
-    .setTitle(title)
+    .setCustomId(
+      customId
+    )
+
+    .setTitle(
+      title
+    )
+
     .addComponents(
       new ActionRowBuilder()
-        .addComponents(input)
+        .addComponents(
+          input
+        )
     );
 }
 
@@ -753,6 +790,13 @@ async function saveWelcomeBuilderConfig(
         config
       );
 
+
+    const imageUrl =
+      getWelcomeImageUrl(
+        normalized
+      );
+
+
     const databaseConfig = {
       enabled:
         normalized.enabled,
@@ -762,8 +806,7 @@ async function saveWelcomeBuilderConfig(
 
       welcomeMessage:
         normalized.welcomeMessage ||
-        normalized.welcomeEmbed
-          ?.description ||
+        normalized.welcomeEmbed?.description ||
         'Welcome {user} to {server}!',
 
       welcomePing:
@@ -771,50 +814,36 @@ async function saveWelcomeBuilderConfig(
 
       welcomeEmbed: {
         title:
-          normalized.welcomeEmbed
-            ?.title ||
+          normalized.welcomeEmbed?.title ||
           '🎉 Welcome!',
 
         description:
-          normalized.welcomeEmbed
-            ?.description ||
+          normalized.welcomeEmbed?.description ||
           normalized.welcomeMessage ||
           'Welcome {user} to {server}!',
 
         color:
-          normalized.welcomeEmbed
-            ?.color ||
+          normalized.welcomeEmbed?.color ||
           '#191717',
 
         footer:
-          normalized.welcomeEmbed
-            ?.footer ||
+          normalized.welcomeEmbed?.footer ||
           null,
 
         image: {
           url:
-            getWelcomeImageUrl(
-              normalized
-            )
+            imageUrl
         },
 
-        thumbnail:
-          normalized.welcomeEmbed
-            ?.thumbnail?.url
-            ? {
-                url:
-                  normalized
-                    .welcomeEmbed
-                    .thumbnail
-                    .url
-              }
-            : null
+        thumbnail: {
+          url:
+            normalized.welcomeEmbed?.thumbnail?.url ||
+            null
+        }
       },
 
       welcomeImage:
-        getWelcomeImageUrl(
-          normalized
-        )
+        imageUrl
     };
 
 
@@ -826,9 +855,7 @@ async function saveWelcomeBuilderConfig(
       );
 
 
-    if (
-      result === false
-    ) {
+    if (result === false) {
       return false;
     }
 
@@ -837,6 +864,7 @@ async function saveWelcomeBuilderConfig(
       guildId,
       normalized
     );
+
 
     return true;
 
@@ -858,9 +886,7 @@ async function handleWelcomeInteraction(
   interaction,
   client
 ) {
-  if (
-    !interaction.guildId
-  ) {
+  if (!interaction.guildId) {
     return false;
   }
 
@@ -871,9 +897,17 @@ async function handleWelcomeInteraction(
 
   if (
     interaction.isChatInputCommand() &&
-    interaction.commandName ===
-      'welcome'
+    interaction.commandName === 'welcome'
   ) {
+    /*
+     * Force a fresh database load when /welcome is opened.
+     * This makes sure the dashboard starts with saved settings.
+     */
+    temporaryWelcomeConfigs.delete(
+      interaction.guildId
+    );
+
+
     const config =
       await loadWelcomeBuilderConfig(
         client,
@@ -886,6 +920,7 @@ async function handleWelcomeInteraction(
         interaction,
         config
       ),
+
       flags:
         MessageFlags.Ephemeral
     });
@@ -912,7 +947,7 @@ async function handleWelcomeInteraction(
 
 
     config.channelId =
-      interaction.values[0] ||
+      interaction.values?.[0] ||
       null;
 
 
@@ -951,19 +986,15 @@ async function handleWelcomeInteraction(
 
 
     const selected =
-      interaction.values[0];
+      interaction.values?.[0];
 
 
-    if (
-      selected === 'title'
-    ) {
+    if (selected === 'title') {
       await interaction.showModal(
         createWelcomeModal(
           'welcome_modal_title',
           'Edit Welcome Title',
-          config.welcomeEmbed
-            ?.title ||
-            '',
+          config.welcomeEmbed?.title || '',
           'Title',
           TextInputStyle.Short,
           256
@@ -974,16 +1005,12 @@ async function handleWelcomeInteraction(
     }
 
 
-    if (
-      selected ===
-        'description'
-    ) {
+    if (selected === 'description') {
       await interaction.showModal(
         createWelcomeModal(
           'welcome_modal_description',
           'Edit Welcome Description',
-          config.welcomeEmbed
-            ?.description ||
+          config.welcomeEmbed?.description ||
             config.welcomeMessage ||
             '',
           'Description',
@@ -996,15 +1023,12 @@ async function handleWelcomeInteraction(
     }
 
 
-    if (
-      selected === 'color'
-    ) {
+    if (selected === 'color') {
       await interaction.showModal(
         createWelcomeModal(
           'welcome_modal_color',
           'Edit Embed Color',
-          config.welcomeEmbed
-            ?.color ||
+          config.welcomeEmbed?.color ||
             '#191717',
           'Hex Color',
           TextInputStyle.Short,
@@ -1016,16 +1040,12 @@ async function handleWelcomeInteraction(
     }
 
 
-    if (
-      selected === 'footer'
-    ) {
+    if (selected === 'footer') {
       await interaction.showModal(
         createWelcomeModal(
           'welcome_modal_footer',
           'Edit Embed Footer',
-          config.welcomeEmbed
-            ?.footer ||
-            '',
+          config.welcomeEmbed?.footer || '',
           'Footer',
           TextInputStyle.Short,
           2048
@@ -1036,16 +1056,12 @@ async function handleWelcomeInteraction(
     }
 
 
-    if (
-      selected === 'image'
-    ) {
+    if (selected === 'image') {
       await interaction.showModal(
         createWelcomeModal(
           'welcome_modal_image',
           'Edit Welcome Image',
-          getWelcomeImageUrl(
-            config
-          ) || '',
+          getWelcomeImageUrl(config) || '',
           'Image URL',
           TextInputStyle.Short,
           1000
@@ -1056,13 +1072,11 @@ async function handleWelcomeInteraction(
     }
 
 
-    if (
-      selected === 'thumbnail'
-    ) {
+    if (selected === 'thumbnail') {
       const thumbnail =
-        config.welcomeEmbed
-          ?.thumbnail?.url ||
+        config.welcomeEmbed?.thumbnail?.url ||
         '';
+
 
       await interaction.showModal(
         createWelcomeModal(
@@ -1077,11 +1091,14 @@ async function handleWelcomeInteraction(
 
       return true;
     }
+
+
+    return true;
   }
 
 
   /* =====================================================
-     BUTTONS
+     WELCOME BUTTONS
   ===================================================== */
 
   if (
@@ -1105,12 +1122,7 @@ async function handleWelcomeInteraction(
       interaction.customId ===
         'welcome_preview'
     ) {
-      await interaction.reply({
-        content:
-          config.welcomePing
-            ? interaction.user.toString()
-            : undefined,
-
+      const payload = {
         embeds: [
           createWelcomeEmbed(
             interaction,
@@ -1120,7 +1132,18 @@ async function handleWelcomeInteraction(
 
         flags:
           MessageFlags.Ephemeral
-      });
+      };
+
+
+      if (config.welcomePing) {
+        payload.content =
+          interaction.user.toString();
+      }
+
+
+      await interaction.reply(
+        payload
+      );
 
 
       return true;
@@ -1226,14 +1249,28 @@ async function handleWelcomeInteraction(
         defaultWelcomeConfig();
 
 
+      const saved =
+        await saveWelcomeBuilderConfig(
+          client,
+          interaction.guildId,
+          resetConfig
+        );
+
+
+      if (!saved) {
+        await interaction.reply({
+          content:
+            '❌ Failed to reset the welcome configuration.',
+
+          flags:
+            MessageFlags.Ephemeral
+        });
+
+        return true;
+      }
+
+
       temporaryWelcomeConfigs.set(
-        interaction.guildId,
-        resetConfig
-      );
-
-
-      await saveWelcomeBuilderConfig(
-        client,
         interaction.guildId,
         resetConfig
       );
@@ -1253,7 +1290,7 @@ async function handleWelcomeInteraction(
 
 
   /* =====================================================
-     MODALS
+     WELCOME MODALS
   ===================================================== */
 
   if (
@@ -1305,6 +1342,7 @@ async function handleWelcomeInteraction(
     ) {
       config.welcomeEmbed.description =
         value;
+
 
       config.welcomeMessage =
         value ||
@@ -1413,9 +1451,7 @@ async function handleWelcomeInteraction(
 
       if (
         thumbnail &&
-        !isValidUrl(
-          thumbnail
-        )
+        !isValidUrl(thumbnail)
       ) {
         await interaction.reply({
           content:
@@ -1434,7 +1470,9 @@ async function handleWelcomeInteraction(
           ? {
               url: thumbnail
             }
-          : null;
+          : {
+              url: null
+            };
     }
 
 
@@ -1482,14 +1520,22 @@ async function handleWelcomeInteraction(
 }
 
 
+/* =========================================================
+   INTERACTION CREATE
+========================================================= */
+
 export default {
   name: Events.InteractionCreate,
 
-  async execute(interaction, client) {
+  async execute(
+    interaction,
+    client
+  ) {
     const interactionTraceContext =
       createInteractionTraceContext(
         interaction
       );
+
 
     interaction.traceContext =
       interactionTraceContext;
@@ -1497,13 +1543,16 @@ export default {
     interaction.traceId =
       interactionTraceContext.traceId;
 
+
     return runWithTraceContext(
       interactionTraceContext,
       async () => {
         try {
+
           InteractionHelper.patchInteractionResponses(
             interaction
           );
+
 
           ResponseCoordinator.attach(
             interaction
@@ -1532,6 +1581,7 @@ export default {
             interaction.isChatInputCommand()
           ) {
             try {
+
               logger.info(
                 `Command executed: /${interaction.commandName} by ${interaction.user.tag}`,
                 {
@@ -1680,6 +1730,7 @@ export default {
               ) {
                 const cooldownKey =
                   `${interaction.user.id}:${interaction.commandName}`;
+
 
                 const expiresAt =
                   client.cooldowns.get(
@@ -1883,6 +1934,7 @@ export default {
               );
 
             } catch (error) {
+
               await handleInteractionError(
                 interaction,
                 error,
@@ -1912,6 +1964,7 @@ export default {
               );
             }
 
+
             return;
           }
 
@@ -1933,11 +1986,14 @@ export default {
               autocompleteCommand?.autocomplete
             ) {
               try {
+
                 await autocompleteCommand.autocomplete(
                   interaction,
                   client
                 );
+
               } catch (error) {
+
                 logger.error(
                   'Error handling command autocomplete:',
                   {
@@ -1960,6 +2016,7 @@ export default {
                   );
               }
 
+
               return;
             }
 
@@ -1970,6 +2027,10 @@ export default {
               );
 
 
+            /* ===============================
+               APPLY AUTOCOMPLETE
+            =============================== */
+
             if (
               interaction.commandName ===
                 'apply' &&
@@ -1977,6 +2038,7 @@ export default {
                 'application'
             ) {
               try {
+
                 const {
                   getApplicationRoles
                 } =
@@ -2021,6 +2083,7 @@ export default {
                       role => ({
                         name:
                           `${role.name}${role.enabled === false ? ' (disabled)' : ''}`,
+
                         value:
                           role.name
                       })
@@ -2028,8 +2091,9 @@ export default {
                 );
 
               } catch (error) {
+
                 logger.error(
-                  'Error handling autocomplete:',
+                  'Error handling apply autocomplete:',
                   {
                     error:
                       error.message,
@@ -2049,9 +2113,12 @@ export default {
                     () => {}
                   );
               }
-
             }
 
+
+            /* ===============================
+               APP ADMIN AUTOCOMPLETE
+            =============================== */
 
             else if (
               interaction.commandName ===
@@ -2060,6 +2127,7 @@ export default {
                 'application'
             ) {
               try {
+
                 const {
                   getApplicationRoles
                 } =
@@ -2102,6 +2170,7 @@ export default {
                       role => ({
                         name:
                           `${role.name}${role.enabled === false ? ' (disabled)' : ''}`,
+
                         value:
                           role.name
                       })
@@ -2109,6 +2178,7 @@ export default {
                 );
 
               } catch (error) {
+
                 logger.error(
                   'Error handling app-admin autocomplete:',
                   {
@@ -2133,6 +2203,10 @@ export default {
             }
 
 
+            /* ===============================
+               REACT ROLES AUTOCOMPLETE
+            =============================== */
+
             else if (
               interaction.commandName ===
                 'reactroles' &&
@@ -2140,6 +2214,7 @@ export default {
                 'panel'
             ) {
               try {
+
                 const {
                   getAllReactionRoleMessages,
                   deleteReactionRoleMessage
@@ -2151,6 +2226,7 @@ export default {
 
                 const guildId =
                   interaction.guildId;
+
 
                 const guild =
                   interaction.guild;
@@ -2245,6 +2321,7 @@ export default {
                       .map(
                         async panel => {
                           try {
+
                             const channel =
                               guild.channels.cache.get(
                                 panel.channelId
@@ -2304,6 +2381,7 @@ export default {
                 );
 
               } catch (error) {
+
                 logger.error(
                   'Error handling reactroles autocomplete:',
                   {
@@ -2326,6 +2404,9 @@ export default {
                   );
               }
             }
+
+
+            return;
           }
 
 
@@ -2336,6 +2417,7 @@ export default {
           else if (
             interaction.isButton()
           ) {
+
             if (
               interaction.customId.startsWith(
                 'shared_todo_'
@@ -2346,63 +2428,84 @@ export default {
                   '_'
                 );
 
+
               const buttonType =
                 parts
                   .slice(0, 3)
                   .join('_');
 
+
               const listId =
                 parts[3];
+
 
               const button =
                 client.buttons.get(
                   buttonType
                 );
 
+
               if (button) {
                 try {
+
                   await button.execute(
                     interaction,
                     client,
                     [listId]
                   );
+
                 } catch (error) {
+
                   await handleInteractionError(
                     interaction,
                     error,
                     {
                       traceId:
                         interactionTraceContext.traceId,
+
                       guildId:
                         interaction.guildId,
+
                       userId:
                         interaction.user?.id,
+
                       type:
                         'button',
+
                       customId:
                         interaction.customId,
+
                       handler:
                         'todo'
                     }
                   );
                 }
+
               } else {
+
                 throw createError(
                   `No button handler found for ${buttonType}`,
+
                   ErrorTypes.CONFIGURATION,
+
                   'This button is not available.',
+
                   {
                     traceId:
                       interactionTraceContext.traceId,
+
                     guildId:
                       interaction.guildId,
+
                     userId:
                       interaction.user?.id,
+
                     customId:
                       interaction.customId
                   }
                 );
               }
+
 
               return;
             }
@@ -2438,15 +2541,21 @@ export default {
 
               throw createError(
                 `No button handler found for ${customId}`,
+
                 ErrorTypes.CONFIGURATION,
+
                 'This button is not available.',
+
                 {
                   traceId:
                     interactionTraceContext.traceId,
+
                   guildId:
                     interaction.guildId,
+
                   userId:
                     interaction.user?.id,
+
                   customId:
                     interaction.customId
                 }
@@ -2455,26 +2564,34 @@ export default {
 
 
             try {
+
               await button.execute(
                 interaction,
                 client,
                 args
               );
+
             } catch (error) {
+
               await handleInteractionError(
                 interaction,
                 error,
                 {
                   traceId:
                     interactionTraceContext.traceId,
+
                   guildId:
                     interaction.guildId,
+
                   userId:
                     interaction.user?.id,
+
                   type:
                     'button',
+
                   customId:
                     interaction.customId,
+
                   handler:
                     'general'
                 }
@@ -2520,15 +2637,21 @@ export default {
 
               throw createError(
                 `No select menu handler found for ${customId}`,
+
                 ErrorTypes.CONFIGURATION,
+
                 'This select menu is not available.',
+
                 {
                   traceId:
                     interactionTraceContext.traceId,
+
                   guildId:
                     interaction.guildId,
+
                   userId:
                     interaction.user?.id,
+
                   customId:
                     interaction.customId
                 }
@@ -2537,24 +2660,31 @@ export default {
 
 
             try {
+
               await selectMenu.execute(
                 interaction,
                 client,
                 args
               );
+
             } catch (error) {
+
               await handleInteractionError(
                 interaction,
                 error,
                 {
                   traceId:
                     interactionTraceContext.traceId,
+
                   guildId:
                     interaction.guildId,
+
                   userId:
                     interaction.user?.id,
+
                   type:
                     'select_menu',
+
                   customId:
                     interaction.customId
                 }
@@ -2570,35 +2700,45 @@ export default {
           else if (
             interaction.isModalSubmit()
           ) {
+
             if (
               interaction.customId.startsWith(
                 'app_modal_'
               )
             ) {
               try {
+
                 await handleApplicationModal(
                   interaction
                 );
+
               } catch (error) {
+
                 await handleInteractionError(
                   interaction,
                   error,
                   {
                     traceId:
                       interactionTraceContext.traceId,
+
                     guildId:
                       interaction.guildId,
+
                     userId:
                       interaction.user?.id,
+
                     type:
                       'modal',
+
                     customId:
                       interaction.customId,
+
                     handler:
                       'application'
                   }
                 );
               }
+
 
               return;
             }
@@ -2608,15 +2748,19 @@ export default {
               interaction.customId.startsWith(
                 'app_review_'
               ) ||
+
               interaction.customId.startsWith(
                 'jtc_'
               ) ||
+
               interaction.customId.startsWith(
                 'config_wizard_modal:'
               ) ||
+
               interaction.customId.startsWith(
                 'log_dash_channel_modal:'
               ) ||
+
               interaction.customId.startsWith(
                 'log_dash_filter_modal:'
               )
@@ -2631,6 +2775,7 @@ export default {
                     interactionTraceContext.traceId
                 }
               );
+
 
               return;
             }
@@ -2663,15 +2808,21 @@ export default {
 
               throw createError(
                 `No modal handler found for ${customId}`,
+
                 ErrorTypes.CONFIGURATION,
+
                 'This form is not available.',
+
                 {
                   traceId:
                     interactionTraceContext.traceId,
+
                   guildId:
                     interaction.guildId,
+
                   userId:
                     interaction.user?.id,
+
                   customId:
                     interaction.customId
                 }
@@ -2680,26 +2831,34 @@ export default {
 
 
             try {
+
               await modal.execute(
                 interaction,
                 client,
                 args
               );
+
             } catch (error) {
+
               await handleInteractionError(
                 interaction,
                 error,
                 {
                   traceId:
                     interactionTraceContext.traceId,
+
                   guildId:
                     interaction.guildId,
+
                   userId:
                     interaction.user?.id,
+
                   type:
                     'modal',
+
                   customId:
                     interaction.customId,
+
                   handler:
                     'general'
                 }
@@ -2707,8 +2866,8 @@ export default {
             }
           }
 
-
         } catch (error) {
+
           logger.error(
             'Unhandled error in interactionCreate:',
             {
@@ -2736,6 +2895,7 @@ export default {
 
 
           try {
+
             await handleInteractionError(
               interaction,
               error,
@@ -2762,7 +2922,9 @@ export default {
                   'interactionCreate.unhandled'
               }
             );
+
           } catch (replyError) {
+
             logger.error(
               'Failed to send fallback error response:',
               {
